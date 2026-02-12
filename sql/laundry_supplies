@@ -1,0 +1,1 @@
+INSERT INTO "public"."laundry_supplies" ("id", "key", "price", "active") VALUES ('0baf28ea-90f0-434d-81d9-e8f870fb3cad', 'detergent', '10', 'true'), ('ffd61bef-b67f-4446-82e5-4ec7a1e0fadb', 'softener', '10', 'true');

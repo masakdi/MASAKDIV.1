@@ -1,0 +1,1 @@
+INSERT INTO "public"."delivery_fee_schedules" ("id", "mode", "fee_1", "fee_2", "extra_per_basket", "active") VALUES ('152ed770-9c9d-4909-b837-fba7a758923e', 'pickup_only', '25', '45', '20', 'true'), ('3efb4f7a-d89e-44ba-8f09-f64f855be2cd', 'pickup_and_return', '50', '80', '30', 'true'), ('c27c9154-30e4-4485-b915-0a2756052b33', 'dropoff_only', '25', '45', '20', 'true');

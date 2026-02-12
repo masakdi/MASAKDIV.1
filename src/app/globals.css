@@ -1,0 +1,123 @@
+/* ===== Tailwind CSS directives ===== */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ----- Theme tokens ----- */
+:root {
+  --background: #ffffff;
+  --foreground: #0f172a;
+  --tint: #0a84ff;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+    color-scheme: dark;
+  }
+}
+
+/* ----- Base polish ----- */
+* {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+html,
+body {
+  height: 100%;
+  -webkit-text-size-adjust: 100%;
+  overscroll-behavior: none;
+}
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(
+    --font-sans,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    "Noto Sans Thai",
+    Arial,
+    Helvetica,
+    sans-serif
+  );
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* (ถ้าจะซ่อนสกรอลบาร์เฉพาะ webview ค่อยใส่คลาสครอบเองทีหลัง) */
+::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+/* ===== Presets (เดิมใช้ @apply; ตอนนี้แปลงเป็น CSS ธรรมดา) ===== */
+.form-field {
+  width: 100%;
+  height: 3rem; /* h-12 */
+  border-radius: 1rem; /* rounded-2xl */
+  background: #f8fafc; /* slate-50 */
+  padding-left: 1rem; padding-right: 1rem; /* px-4 */
+  font-size: 16px; /* text-[16px] */
+  color: inherit;
+}
+.form-field::placeholder { color: #94a3b8; } /* slate-400 */
+.form-field:focus {
+  background: #ffffff; /* focus:bg-white */
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(10,132,255,0.4); /* focus:ring-2 ring-[--tint]/40 */
+}
+
+.form-area {
+  width: 100%;
+  border-radius: 1rem;
+  background: #f8fafc; /* slate-50 */
+  padding: 0.75rem 1rem; /* py-3 px-4 */
+  font-size: 16px;
+  color: inherit;
+  resize: none;
+}
+.form-area::placeholder { color: #94a3b8; }
+.form-area:focus {
+  background: #ffffff;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(10,132,255,0.4);
+}
+
+.card {
+  border-radius: 1rem;              /* rounded-2xl */
+  border: 1px solid rgba(226,232,240,0.6); /* border-slate-200/60 */
+  background: #ffffff;              /* bg-white */
+}
+
+.soft-border {
+  border-color: rgba(226,232,240,0.6); /* border-slate-200/60 */
+}
+
+/* Remove native number input spinners */
+input[type="number"] { -moz-appearance: textfield; }
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* ----- Animations ----- */
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(20px); }
+  to   { opacity: 1; transform: translateX(0);   }
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.animate-slideInRight { animation: slideInRight 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
+.animate-fadeIn       { animation: fadeIn 0.5s ease-out; }
+
+/* ===== iOS fix patch ===== */
+textarea, input, select { font-size: 16px !important; } /* กัน Safari auto-zoom เวลาโฟกัส */
+.backdrop-blur { -webkit-backdrop-filter: blur(12px); }
+.overflow-y-auto { -webkit-overflow-scrolling: touch; }
+
+/* ----- Optional: glass background utility (แทนการ override bg-white/90) ----- */
+.bg-app-glass { background-color: rgba(255, 255, 255, 0.95); }

@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run dev)",
+      "Bash(npm run build:*)",
+      "Bash(npx kill-port:*)",
+      "Bash(curl:*)",
+      "Bash(taskkill:*)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)",
+      "Bash(TASKKILL:*)",
+      "Read(//c/Users/peraw/Downloads/Notification/**)",
+      "Bash(npm install:*)",
+      "Bash(npm uninstall:*)",
+      "Bash(dir:*)",
+      "Bash(del \"C:\\Users\\armna\\Videos\\V.1Lasted\\src\\app\\api\\admin\\orders\\[id]\\delete\\route.ts\")",
+      "Bash(rm:*)",
+      "Bash(git push:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nfix: improve user validation with LIFF profile recovery\n\n- เพิ่มการดึง user_id จาก LIFF profile ถ้า sessionStorage ว่าง\n- แก้ปัญหาผู้ใช้เก่าไม่สามารถสั่งออเดอร์ได้\n- ลบการ reload หน้าอัตโนมัติที่ทำให้เกิดปัญหา\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(git commit:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
