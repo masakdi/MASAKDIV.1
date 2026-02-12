@@ -344,7 +344,7 @@ export default function HomePage() {
     );
 
     let df = deliveryBreakdown.reduce((s, f) => s + f, 0);
-    // Subtotal for Discount calculation (Services + Supplies + Delivery)
+    // Subtotal Discount calculation (Services + Supplies + Delivery) 
     const discountableSubtotal = bp + st + df;
 
     let mDisc = 0, mLabel = "";
