@@ -7,7 +7,7 @@ import {
   DollarSign, Package, RefreshCw, ChevronDown, Search,
   Clock, CheckCircle2, XCircle, AlertCircle, Share2, Eye, EyeOff,
   ArrowDownNarrowWide, ArrowUpNarrowWide, BarChart3, TrendingUp,
-  ShoppingBag, Calendar, Ticket, Settings, Edit2, Truck, Bookmark
+  ShoppingBag, Calendar, Ticket, Settings, Edit2, Truck, Bookmark, Trash2,
 } from "lucide-react";
 import Swal from "sweetalert2";
 
@@ -31,7 +31,7 @@ type OrderItem = {
   subtotal_before_discount?: number | null;
   contact_name?: string | null;
   contact_phone?: string | null;
-  delivery?: { address?: string; mode?: string } | null;
+  delivery?: { address?: string; mode?: string; google_map_link?: string } | null;
   note?: string | null;
   slip_url?: string | null;
   addons?: any;
@@ -54,7 +54,7 @@ export default function AdminDispatchPage() {
   // Auth / tabs
   const [authOk, setAuthOk] = useState(false);
   const [password, setPassword] = useState("");
-  const [tab, setTab] = useState<"dashboard" | "orders" | "reports" | "accounting" | "customers" | "services">("dashboard");
+  const [tab, setTab] = useState<"dashboard" | "orders" | "reports" | "accounting" | "customers" | "services">("accounting");
 
   // Costs configuration (standard average costs - can be estimated internal prices)
   const [costs, setCosts] = useState({
@@ -98,6 +98,8 @@ export default function AdminDispatchPage() {
   const [sortBy, setSortBy] = useState<"newest" | "oldest" | "price">("newest");
   const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set());
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
 
   // Reports filters
   const [filterCat, setFilterCat] = useState("");
@@ -105,7 +107,7 @@ export default function AdminDispatchPage() {
   // Date filters (for all tabs)
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
-  const [accountingPeriod, setAccountingPeriod] = useState<"today" | "week" | "month" | "custom">("today");
+  const [currentAccountMonth, setCurrentAccountMonth] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
 
   const [showPass, setShowPass] = useState(false);
 
@@ -440,6 +442,95 @@ export default function AdminDispatchPage() {
   };
 
 
+
+  const toggleSelection = (id: string) => {
+    const newSet = new Set(selectedOrders);
+    if (newSet.has(id)) {
+      newSet.delete(id);
+    } else {
+      newSet.add(id);
+    }
+    setSelectedOrders(newSet);
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedOrders.size === 0) return;
+
+    const { isConfirmed } = await Swal.fire({
+      title: `ลบ ${selectedOrders.size} รายการ?`,
+      text: "คุณต้องการลบออเดอร์ที่เลือกทั้งหมดใช่หรือไม่? (กู้คืนไม่ได้)",
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#e11d48',
+      cancelButtonColor: '#64748b',
+      confirmButtonText: 'ยืนยันลบ',
+      cancelButtonText: 'ยกเลิก',
+    });
+
+    if (isConfirmed) {
+      try {
+        const token = sessionStorage.getItem("admin_token") || "";
+        const res = await fetch("/api/admin/orders", {
+          method: "DELETE",
+          headers: { 
+            "Content-Type": "application/json",
+            "x-admin-token": token 
+          },
+          body: JSON.stringify({ ids: Array.from(selectedOrders) }),
+        });
+
+        if (res.ok) {
+          await Swal.fire('สำเร็จ', `ลบ ${selectedOrders.size} รายการเรียบร้อย`, 'success');
+          // Optimistic update
+          setOrders(prev => prev.filter(o => !selectedOrders.has(o.id)));
+          setSelectedOrders(new Set());
+          setIsSelectionMode(false);
+        } else {
+          throw new Error("Failed to delete");
+        }
+      } catch (err) {
+        console.error(err);
+        Swal.fire('ผิดพลาด', 'ไม่สามารถลบข้อมูลได้', 'error');
+      }
+    }
+  };
+
+  // ✅ Delete Order Function
+  const handleDeleteOrder = async (id: string) => {
+    const { isConfirmed } = await Swal.fire({
+      title: 'ยืนยันการลบ?',
+      text: "คุณต้องการลบออเดอร์นี้ใช่หรือไม่? (ลบแล้วกู้คืนไม่ได้)",
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#e11d48',
+      cancelButtonColor: '#64748b',
+      confirmButtonText: 'ลบข้อมูล',
+      cancelButtonText: 'ยกเลิก',
+    });
+
+    if (isConfirmed) {
+      try {
+        const token = sessionStorage.getItem("admin_token") || "";
+        const res = await fetch(`/api/admin/orders/${id}`, {
+          method: "DELETE",
+          headers: { "x-admin-token": token },
+        });
+
+        if (res.ok) {
+          await Swal.fire('สำเร็จ', 'ลบออเดอร์เรียบร้อยแล้ว', 'success');
+          // Optimistic update
+          setOrders(prev => prev.filter(o => o.id !== id));
+        } else {
+          throw new Error("Failed to delete");
+        }
+      } catch (err) {
+        console.error(err);
+        Swal.fire('ผิดพลาด', 'ไม่สามารถลบออเดอร์ได้', 'error');
+      }
+    }
+  };
+
+
   // Share / Copy
   const copyToClipboard = async (text: string) => {
     await navigator.clipboard.writeText(text);
@@ -459,101 +550,118 @@ const shareOrder = async (order: OrderItem) => {
     pickup_and_return: "🚚 รับ + ส่งคืน",
     pickup_only: "🚚 รับอย่างเดียว",
   };
-const modeKey = order.delivery?.mode ?? "";
-const deliveryMode = (deliveryModeMap[modeKey] ?? modeKey) || "-";
+  const modeKey = order.delivery?.mode ?? "";
+  const deliveryMode = (deliveryModeMap[modeKey] ?? modeKey) || "-";
 
+  // ── 1. Calculate Breakdown from Baskets or Used Stored Values ──
+  let totalWashPrice = 0;
+  let totalDryPrice = 0;
+  let calcDetergent = 0;
+  let calcSoftener = 0;
 
-  // ── ข้อมูลจัดส่ง ──
-  const deliveryInfo = order.delivery
-    ? `📍 ที่อยู่จัดส่ง: ${order.delivery.address || "-"}\n🚗 โหมดจัดส่ง: ${deliveryMode}`
-    : "📍 ที่อยู่จัดส่ง: -\n🚗 โหมดจัดส่ง: -";
+  // Check if stored values exist (Preferred)
+  if ((order as any).wash_price > 0 || (order as any).dry_price > 0) {
+      totalWashPrice = (order as any).wash_price || 0;
+      totalDryPrice = (order as any).dry_price || 0;
+      
+      // Still calculate supplies for display purposes if not stored separately
+      if (order.addons?.baskets) {
+          order.addons.baskets.forEach((b: any) => {
+              const s = b.size || "S";
+              const q = b.qty || 1;
+              const supplyRate = s === "S" ? 10 : 15;
+              if (b.detergent) calcDetergent += supplyRate * q;
+              if (b.softener) calcSoftener += supplyRate * q;
+          });
+      }
+  } else {
+      // Fallback: Calculate from baskets (For old orders)
+      if (order.addons?.baskets) {
+          order.addons.baskets.forEach((b: any) => {
+              const s = b.size || "S";
+              const q = b.qty || 1;
+              
+              // Standard Pricing Logic
+              if (b.service === "wash_only" || b.service === "wash_and_dry") {
+                  totalWashPrice += 50 * q; 
+              }
+              if (b.service === "dry_only" || b.service === "wash_and_dry") {
+                  const dryRate = s === "S" ? 60 : s === "M" ? 70 : 80;
+                  totalDryPrice += dryRate * q;
+              }
 
-  // ── บริการเสริม / รายละเอียดตะกร้า ──
-  let basketsDetail = "-";
-  let suppliesBreakdown = "";
-
-  if (order.addons?.baskets && order.addons.baskets.length > 0) {
-    const suppliesItems: string[] = [];
-
-    basketsDetail = order.addons.baskets
-      .map((basket: any, i: number) => {
-        const size = basket.size || "-";
-        let washPrice = 0;
-        let dryPrice = 0;
-
-        // คำนวณราคาตามประเภทบริการ
-        if (basket.service === "wash_only") {
-          washPrice = size === "S" ? 50 : size === "M" ? 50 : 50;
-        } else if (basket.service === "dry_only") {
-          dryPrice = size === "S" ? 60 : size === "M" ? 70 : 80;
-        } else if (basket.service === "wash_and_dry") {
-          washPrice = size === "S" ? 50 : size === "M" ? 60 : 70;
-          dryPrice = size === "S" ? 50 : size === "M" ? 60 : 60;
-        }
-
-        // น้ำยาเสริม
-        const pricePerItem = basket.size === "S" ? 10 : 15;
-        const addonsArr: string[] = [];
-
-        if (basket.softener) {
-          addonsArr.push(`ปรับผ้านุ่ม (${pricePerItem} ฿)`);
-          suppliesItems.push(`• ปรับผ้านุ่ม: ${pricePerItem} ฿`);
-        }
-        if (basket.detergent) {
-          addonsArr.push(`ผงซักฟอก (${pricePerItem} ฿)`);
-          suppliesItems.push(`• ผงซักฟอก: ${pricePerItem} ฿`);
-        }
-
-        const addons = addonsArr.length > 0 ? addonsArr.join(", ") : "ไม่มี";
-
-        let serviceText = "";
-        if (basket.service === "wash_only") {
-          serviceText = `ซัก ${washPrice} ฿`;
-        } else if (basket.service === "dry_only") {
-          serviceText = `อบ ${dryPrice} ฿`;
-        } else if (basket.service === "wash_and_dry") {
-          serviceText = `ซัก ${washPrice} ฿ + อบ ${dryPrice} ฿`;
-        }
-
-        return `ตะกร้าที่ ${i + 1}:
-  • ไซส์: ${size}
-  • บริการ: ${serviceText}
-  • น้ำยาเพิ่มเติม: ${addons}`;
-      })
-      .join("\n\n");
-
-    if (suppliesItems.length > 0) {
-      const uniqueSupplies = Array.from(new Set(suppliesItems));
-      suppliesBreakdown = "\n" + uniqueSupplies.join("\n");
-    }
+              // Supplies
+              const supplyRate = s === "S" ? 10 : 15;
+              if (b.detergent) calcDetergent += supplyRate * q;
+              if (b.softener) calcSoftener += supplyRate * q;
+          });
+      }
+      
+      // Reconcile with Base Price (Only for old orders needing it)
+      const calcBase = totalWashPrice + totalDryPrice;
+      if (calcBase > 0 && (order.base_price || 0) > 0 && Math.abs(calcBase - order.base_price!) > 1) {
+          const ratio = order.base_price! / calcBase;
+          totalWashPrice = Math.round(totalWashPrice * ratio);
+          totalDryPrice = order.base_price! - totalWashPrice;
+      } else if (order.base_price && calcBase === 0) {
+          totalWashPrice = order.base_price;
+      }
   }
 
-  const basketPhotoUrl = order.addons?.basket_photo_url || "-";
+  // Generate Basket Detail Text
+  let basketsDetail = "-";
+  if (order.addons?.baskets && order.addons.baskets.length > 0) {
+     basketsDetail = order.addons.baskets.map((b: any, i: number) => {
+        const size = b.size || "-";
+        const qty = b.qty || 1;
+        const addonsArr: string[] = [];
+        if (b.softener) addonsArr.push("ปรับผ้านุ่ม");
+        if (b.detergent) addonsArr.push("ผงซักฟอก");
+        const addons = addonsArr.length > 0 ? addonsArr.join(", ") : "ไม่มี";
+        
+        const serviceMap: Record<string, string> = {
+            wash_only: "ซักอย่างเดียว",
+            dry_only: "อบอย่างเดียว",
+            wash_and_dry: "ซัก + อบ",
+        };
+        return `**ตะกร้าที่ ${i + 1}:**\n• ไซส์: ${size} (x${qty})\n• บริการ: ${serviceMap[b.service] || b.service}\n• น้ำยา: ${addons}`;
+     }).join("\n\n");
+  }
 
-  // ── รวมข้อมูลทั้งหมด ──
+  const basketPhotoUrl = order.addons?.basket_photo_url || null;
+
+  // ── รวมข้อมูลทั้งหมด (Format ให้คล้าย Discord) ──
   const text = `
-🧺 ออเดอร์ใหม่
-Order: ${order.order_number || order.id}
-สถานะ: ${order.status || "-"}
+🆕 ออเดอร์ใหม่!
+Order: ${order.order_number || `#${order.id.slice(0, 8)}`}
+ประเภท: ${order.order_type === 'booking' ? `📅 จองล่วงหน้า (${order.scheduled_date ? new Date(order.scheduled_date).toLocaleDateString('th-TH') : '-'})` : '⚡ สั่งด่วน'}
+${deliveryMode}
+
+👤 ข้อมูลลูกค้า
 ชื่อ: ${order.contact_name || "-"}
 เบอร์: ${order.contact_phone || "-"}
-${deliveryInfo}
 
-📦 รายละเอียดตะกร้า:
+📍 ที่อยู่จัดส่ง
+${order.delivery?.address || "-"}
+${(order.delivery as any)?.google_map_link ? `🔗 ดูแผนที่: ${(order.delivery as any).google_map_link}` : ""}
+
+🧺 รายละเอียดตะกร้า
 ${basketsDetail}
 
-🧴 รายละเอียดน้ำยา:
-${suppliesBreakdown || "-"}
+💵 รายละเอียดค่าใช้จ่าย
+• ค่าซัก: ${totalWashPrice.toLocaleString("th-TH")} ฿
+• ค่าอบ: ${totalDryPrice.toLocaleString("th-TH")} ฿
+${calcDetergent > 0 ? `• น้ำยาซัก: ${calcDetergent.toLocaleString("th-TH")} ฿` : ""}
+${calcSoftener > 0 ? `• น้ำยาปรับผ้านุ่ม: ${calcSoftener.toLocaleString("th-TH")} ฿` : ""}
+• ค่าส่ง: ${deliveryFee.toLocaleString("th-TH")} ฿
+• ค่าบริการ: ${platformFee.toLocaleString("th-TH")} ฿
+${discountAmount > 0 ? `• ส่วนลด: -${discountAmount.toLocaleString("th-TH")} ฿` : ""}
 
-ค่า Size: ${basePrice.toLocaleString("th-TH")} ฿
-ค่าน้ำยา: ${suppliesTotal.toLocaleString("th-TH")} ฿
-ค่าจัดส่ง: ${deliveryFee.toLocaleString("th-TH")} ฿
-ค่าบริการ: ${platformFee.toLocaleString("th-TH")} ฿
-${discountAmount > 0 ? `ส่วนลด: -${discountAmount.toLocaleString("th-TH")} ฿\n` : ""}💰 ยอดรวมทั้งหมด: ${total.toLocaleString("th-TH")} ฿
+✨ ยอดรวมต้องชำระ: ${total.toLocaleString("th-TH")} ฿
 
-หมายเหตุ: ${order.note || "-"}
-📄 ลิงก์สลิป: ${order.slip_url || "-"}
-🖼️ รูปตะกร้า: ${basketPhotoUrl}
+📝 หมายเหตุ: ${order.note || "-"}
+${order.slip_url ? `📄 สลิปโอนเงิน: ${order.slip_url}` : ""}
+${basketPhotoUrl ? `🖼️ รูปตะกร้าผ้า: ${basketPhotoUrl}` : ""}
 `;
 
   try {
@@ -617,6 +725,20 @@ ${discountAmount > 0 ? `ส่วนลด: -${discountAmount.toLocaleString("th
 
       // ✅ Apply date filter
       const itemDate = new Date(o.created_at);
+
+      // 🟢 Accounting Tab: Filter by selected month
+      if (tab === "accounting") {
+        if (!currentAccountMonth) return true;
+        const [y, m] = currentAccountMonth.split('-');
+        if (itemDate.getFullYear() !== parseInt(y) || itemDate.getMonth() + 1 !== parseInt(m)) {
+          return false;
+        }
+        // In accounting mode, ignore tab-specific status filters. Always show all orders for the month.
+        // But still respect the search bar.
+        return matchSearch;
+      }
+
+      // 🔵 Other Tabs: Filter by Date Range
       const start = startDate ? new Date(startDate) : null;
       const end = endDate ? new Date(endDate) : null;
       let matchDate = true;
@@ -639,7 +761,125 @@ ${discountAmount > 0 ? `ส่วนลด: -${discountAmount.toLocaleString("th
       return bTotal - aTotal;
     });
 
-  // ✅ Detailed Statistics Breakdown
+
+  // ✅ Export CSV Function
+  const handleExportCSV = () => {
+    // 1. Filter orders for current accounting view
+    const dataToExport = filteredOrders; // Already filtered by month in variable logic
+
+    // 2. Map data to CSV Rows
+    const rows = dataToExport.map(o => {
+        // Calculate Granular Costs (Wash, Dry, Detergent, Softener)
+        let calcWash = 0;
+        let calcDry = 0;
+        let calcDetergent = 0;
+        let calcSoftener = 0;
+
+        // Use stored values if available (Priority 1)
+        if ((o as any).wash_price > 0 || (o as any).dry_price > 0) {
+            calcWash = (o as any).wash_price || 0;
+            calcDry = (o as any).dry_price || 0;
+            
+            // Calculate supplies breakdown from baskets
+            if (o.addons?.baskets) {
+                o.addons.baskets.forEach((b: any) => {
+                    const s = b.size || "S";
+                    const q = b.qty || 1;
+                    const supplyRate = s === "S" ? 10 : 15;
+                    if (b.detergent) calcDetergent += supplyRate * q;
+                    if (b.softener) calcSoftener += supplyRate * q;
+                });
+            }
+        } else {
+            // Fallback Calculation (Priority 2)
+            if (o.addons?.baskets) {
+                o.addons.baskets.forEach((b: any) => {
+                    const s = b.size || "S";
+                    const q = b.qty || 1;
+                    // Wash
+                    if (b.service === "wash_only" || b.service === "wash_and_dry") calcWash += 50 * q;
+                    // Dry
+                    if (b.service === "dry_only" || b.service === "wash_and_dry") calcDry += (s === "S" ? 60 : s === "M" ? 70 : 80) * q;
+                    // Supply
+                    const supplyRate = s === "S" ? 10 : 15;
+                    if (b.detergent) calcDetergent += supplyRate * q;
+                    if (b.softener) calcSoftener += supplyRate * q;
+                });
+                // Adjust to base price
+                const sumCalc = calcWash + calcDry;
+                if (sumCalc > 0 && o.base_price && Math.abs(sumCalc - o.base_price) > 0.01) {
+                    const r = o.base_price / sumCalc;
+                    calcWash = Math.round(calcWash * r);
+                    calcDry = o.base_price - calcWash;
+                } else if (sumCalc === 0 && (o.base_price || 0) > 0) {
+                     calcWash = o.base_price || 0;
+                }
+            }
+        }
+
+        // Service Summary String
+        const services = o.addons?.baskets?.map((b: any) => {
+            const svc = b.service === 'wash_and_dry' ? 'ซัก+อบ' : b.service === 'wash_only' ? 'ซัก' : 'อบ';
+            return `${svc} (${b.size})`;
+        }).join(', ') || '-';
+
+        return {
+            name: o.contact_name || '-',
+            phone: o.contact_phone ? `'${o.contact_phone}` : '-', // Add ' to force string in Excel
+            date: new Date(o.created_at).toLocaleDateString('th-TH'),
+            service: services,
+            wash: calcWash,
+            dry: calcDry,
+            det: calcDetergent,
+            soft: calcSoftener,
+            delivery: o.delivery_fee || 0,
+            discount: o.discount_amount || 0,
+            slip: o.slip_url || '-',
+            basket: o.addons?.basket_photo_url || '-'
+        };
+    });
+
+    // 3. Create CSV Content
+    const headers = [
+        "ชื่อ", "เบอร์โทร", "วันที่สั่ง", "บริการที่เลือก", 
+        "ค่าซัก", "ค่าอบ", "ค่าน้ำยาซักผ้า", "ค่าน้ำยาปรับผ้านุ่ม", 
+        "ค่าส่ง", "ส่วนลด", "Slip URL", "รูปตะกร้า URL"
+    ];
+    
+    // Add BOM for Excel UTF-8 support
+    let csvContent = "\uFEFF" + headers.join(",") + "\n";
+
+    rows.forEach(r => {
+        const row = [
+            `"${r.name}"`,
+            `"${r.phone}"`,
+            `"${r.date}"`,
+            `"${r.service}"`,
+            r.wash,
+            r.dry,
+            r.det,
+            r.soft,
+            r.delivery,
+            r.discount,
+            `"${r.slip}"`,
+            `"${r.basket}"`
+        ];
+        csvContent += row.join(",") + "\n";
+    });
+
+    // 4. Trigger Download
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    link.setAttribute("href", url);
+    link.setAttribute("download", `masakdi_accounting_${currentAccountMonth}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // ✅ Detailed Statistics Breakdown (Smart Estimation)
   const getAccountingStats = (ordersList: OrderItem[]) => {
     let wash = 0;
     let dry = 0;
@@ -647,65 +887,102 @@ ${discountAmount > 0 ? `ส่วนลด: -${discountAmount.toLocaleString("th
     let platform = 0;
     let supplies = 0;
     let discount = 0;
-    let cost = 0;
+    let revenue = 0;
 
     ordersList.forEach(o => {
+      // Skip cancelled or deleted orders
       if (o.status === "cancelled" || o.deleted_at) return;
-      
-      delivery += o.delivery_fee ?? 0;
-      platform += o.platform_fee ?? 0;
-      supplies += o.supplies_total ?? 0;
-      discount += o.discount_amount ?? 0;
 
+      const basePrice = o.base_price ?? 0;
+      const suppliesPrice = o.supplies_total ?? 0;
+      const deliveryPrice = o.delivery_fee ?? 0;
+      const platformPrice = o.platform_fee ?? 0;
+      let discountPrice = o.discount_amount ?? 0;
+
+      // 💡 Smart Discount Estimation
+      let isStoredNet = false;
+      
+      if (discountPrice === 0) {
+          if (o.subtotal_before_discount && o.subtotal_before_discount > (basePrice + suppliesPrice + deliveryPrice + platformPrice + 1)) {
+             // Subtotal (Gross) is higher than Sum(Stored). So Stored is Net.
+             discountPrice = o.subtotal_before_discount - (basePrice + suppliesPrice + deliveryPrice + platformPrice);
+             isStoredNet = true;
+          } else if (o.discount_reason) {
+             const r = o.discount_reason.toLowerCase();
+             if (r.includes('15%') || r.includes('member')) {
+                 const discountable = basePrice + deliveryPrice;
+                 discountPrice = discountable * 0.15;
+                 // Assuming Stored is Gross (standard case for missing discount column)
+             } else if (r.includes('free delivery') || r.includes('delivery')) {
+                 discountPrice = deliveryPrice;
+                 // If stored delivery is 0? Then it's Net.
+                 if (deliveryPrice === 0) isStoredNet = true; 
+             }
+          }
+      }
+
+      // Add to totals (Components)
+      // If stored is Net, we inflate components to be Gross for the breakdown display
+      // If stored is Gross, we use as is.
+      const extraForGross = isStoredNet ? discountPrice : 0;
+      
+      // Distribute extra gross amount to components if needed (simplified: add to wash/dry roughly)
+      // Actually strictly: 
+      // If Free Delivery -> Add to Delivery
+      // If % Discount -> Add to Wash/Dry/Delivery
+      
+      // Simplified distribution for aggregation:
+      delivery += deliveryPrice;
+      platform += platformPrice;
+      supplies += suppliesPrice;
+      discount += discountPrice;
+      
+      const adjustedBase = basePrice + (isStoredNet && !o.discount_reason?.includes('delivery') ? extraForGross : 0);
+      const adjustedDelivery = deliveryPrice + (isStoredNet && o.discount_reason?.includes('delivery') ? extraForGross : 0);
+      
+      // Correction for previous lines if we want precise component stats:
+      // But we already added `delivery += deliveryPrice` above. Fix:
+      if (isStoredNet && o.discount_reason?.includes('delivery')) {
+          delivery += extraForGross;
+      } 
+
+      // Calculate Wash & Dry split
+      let basketWash = 0;
+      let basketDry = 0;
+      
       if (o.addons?.baskets && o.addons.baskets.length > 0) {
         o.addons.baskets.forEach((b: any) => {
-          const sz = b.size || "S";
-          const serviceType = (b.service === "wash_dry" || b.service === "wash_and_dry") ? "wash_and_dry" : 
-                             (b.service === "wash_only" ? "wash_only" : 
-                             (b.service === "dry_only" ? "dry_only" : "wash_and_dry"));
-
-          // พยายามหาค่าจาก basePrices ที่โหลดมาจาก DB
-          const match = basePrices.find(p => p.size === sz && p.svc === serviceType);
-          
-          let w = 0;
-          let d = 0;
-
-          if (match && match.breakdown) {
-            // รองรับทั้ง key 'wash' และ 'wash_only' / 'dry' และ 'dry_only'
-            w = match.breakdown.wash || match.breakdown.wash_only || 0;
-            d = match.breakdown.dry || match.breakdown.dry_only || 0;
-          } else {
-            // fallback (ถ้ายังไม่โหลดหรือหาไม่เจอ)
-            if (serviceType === "wash_only") w = 50;
-            else if (serviceType === "dry_only") d = sz === "S" ? 60 : sz === "M" ? 70 : 80;
-            else if (serviceType === "wash_and_dry") {
-              w = sz === "S" ? 50 : sz === "M" ? 60 : 70;
-              d = sz === "S" ? 50 : sz === "M" ? 60 : 60;
-            }
-          }
-          
-          wash += w;
-          dry += d;
-
-          // Cost estimation (คงเดิมสำหรับต้นทุนภายใน)
-          if (sz === "S") cost += costs.basketS;
-          else if (sz === "M") cost += costs.basketM;
-          else if (sz === "L") cost += costs.basketL;
-          else cost += costs.basketS;
+           if (b.service === "wash_only") basketWash += 1;
+           else if (b.service === "dry_only") basketDry += 1;
+           else { basketWash += 0.5; basketDry += 0.5; }
         });
+        
+        const totalUnits = basketWash + basketDry;
+        if (totalUnits > 0) {
+            wash += (adjustedBase * basketWash) / totalUnits;
+            dry += (adjustedBase * basketDry) / totalUnits;
+        } else {
+            wash += adjustedBase / 2;
+            dry += adjustedBase / 2;
+        }
       } else {
-        wash += o.base_price ?? 0;
+        wash += adjustedBase / 2;
+        dry += adjustedBase / 2;
       }
       
-      cost += (o.delivery_fee ? (costs as any).delivery : 0) + (costs as any).platformCost;
+      // Revenue Calculation
+      // If Stored is Net: Revenue = Sum(Stored) = (Gross - Discount) = (Components - Discount).
+      // If Stored is Gross: Revenue = Sum(Stored) - Discount.
+      // My `wash`, `dry` variables are now Gross (if adapted) or Gross (if original).
+      // So `Revenue = (wash + dry + delivery + platform + supplies) - discount`.
+      // This formula holds true for both cases IF I inflated the components correctly.
     });
 
-    const revenue = wash + dry + delivery + platform + supplies - discount;
-    const profit = revenue - cost;
+    revenue = wash + dry + delivery + platform + supplies - discount;
 
-    return { wash, dry, delivery, platform, supplies, discount, revenue, cost, profit };
+    return { wash, dry, delivery, platform, supplies, discount, revenue };
   };
-
+  
   const dashboardStats = {
     totalOrders: filteredOrders.length,
     totalRevenue: filteredOrders
@@ -730,29 +1007,8 @@ ${discountAmount > 0 ? `ส่วนลด: -${discountAmount.toLocaleString("th
       return orderDate.toDateString() === today.toDateString();
     }).length,
   };
-
-  // Helper to filter by period for accounting
-  const getOrdersInPeriod = (p: string) => {
-    const now = new Date();
-    return orders.filter(o => {
-      if (o.status === "cancelled" || o.deleted_at) return false;
-      const d = new Date(o.created_at);
-      if (p === "today") return d.toDateString() === now.toDateString();
-      if (p === "week") {
-        const start = new Date(now);
-        start.setDate(now.getDate() - now.getDay());
-        start.setHours(0,0,0,0);
-        return d >= start;
-      }
-      if (p === "month") return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-      return true; // custom uses filteredOrders global state
-    });
-  };
-
-  const accountingOrders = accountingPeriod === "today" ? getOrdersInPeriod("today") :
-                           accountingPeriod === "week" ? getOrdersInPeriod("week") :
-                           accountingPeriod === "month" ? getOrdersInPeriod("month") :
-                           filteredOrders;
+  
+  const accountingOrders = filteredOrders;
 
   const currentAccounting = getAccountingStats(accountingOrders);
 
@@ -856,6 +1112,12 @@ ${discountAmount > 0 ? `ส่วนลด: -${discountAmount.toLocaleString("th
               <User size={18} />
             </button>
             <button
+              onClick={() => router.push("/Admins/Coupons")}
+              className="p-2 rounded-xl bg-slate-50 text-slate-500 hover:bg-slate-100 transition active:scale-90"
+            >
+              <Ticket size={18} />
+            </button>
+            <button
               onClick={() => router.push("/Admins/BookingConfig")}
               className="p-2 rounded-xl bg-blue-50 text-blue-600 hover:bg-blue-100 transition active:scale-90"
             >
@@ -867,9 +1129,8 @@ ${discountAmount > 0 ? `ส่วนลด: -${discountAmount.toLocaleString("th
         {/* Top Navigation Tabs (Replaces Bottom Nav) */}
         <div className="flex bg-white px-2 border-t border-slate-50 overflow-x-auto no-scrollbar">
           {[
-            { key: "dashboard", label: "รวม", icon: BarChart3 },
-            { key: "orders", label: "งาน", icon: ShoppingBag },
             { key: "accounting", label: "เงิน", icon: DollarSign },
+            { key: "orders", label: "งาน", icon: ShoppingBag },
             { key: "customers", label: "ลูกค้า", icon: User },
             { key: "services", label: "บริการ", icon: Settings },
             { key: "reports", label: "แจ้ง", icon: AlertCircle }
@@ -1041,8 +1302,62 @@ ${discountAmount > 0 ? `ส่วนลด: -${discountAmount.toLocaleString("th
               </div>
             ) : (
               filteredOrders.map((o) => {
-                const total = (o.base_price ?? 0) + (o.supplies_total ?? 0) + (o.delivery_fee ?? 0);
+                const total = (o.base_price ?? 0) + (o.supplies_total ?? 0) + (o.delivery_fee ?? 0) + (o.platform_fee ?? 0) - (o.discount_amount ?? 0);
                 const date = new Date(o.created_at);
+                
+                // ── Calc Wash/Dry Split (Same logic as shareOrder) ──
+                let calcWash = 0;
+                let calcDry = 0;
+                let calcDetergent = 0;
+                let calcSoftener = 0;
+
+                // Use stored values if available (Future Proof)
+                if ((o as any).wash_price > 0 || (o as any).dry_price > 0) {
+                    calcWash = (o as any).wash_price || 0;
+                    calcDry = (o as any).dry_price || 0;
+                    
+                    // Supplies for detailed tooltip/breakdown
+                    if (o.addons?.baskets) {
+                      o.addons.baskets.forEach((basket: any) => {
+                        const size = basket.size || "S";
+                        const qty = basket.qty || 1;
+                        const supplyRate = size === "S" ? 10 : 15;
+                        if (basket.detergent) calcDetergent += supplyRate * qty;
+                        if (basket.softener) calcSoftener += supplyRate * qty;
+                      });
+                    }
+                } else if (o.addons?.baskets) {
+                  // Fallback: Calculate from baskets (Old Orders)
+                  o.addons.baskets.forEach((basket: any) => {
+                    const size = basket.size || "S";
+                    const qty = basket.qty || 1;
+                    
+                    // Wash
+                    if (basket.service === "wash_only" || basket.service === "wash_and_dry") {
+                         calcWash += 50 * qty; 
+                    }
+                    // Dry
+                    if (basket.service === "dry_only" || basket.service === "wash_and_dry") {
+                         const dryRate = size === "S" ? 60 : size === "M" ? 70 : 80;
+                         calcDry += dryRate * qty;
+                    }
+                    // Supply
+                    const supplyRate = size === "S" ? 10 : 15;
+                    if (basket.detergent) calcDetergent += supplyRate * qty;
+                    if (basket.softener) calcSoftener += supplyRate * qty;
+                  });
+                
+                    // Adjust to match stored base_price ONLY for fallback logic
+                    const sumCalc = calcWash + calcDry;
+                    if (sumCalc > 0 && o.base_price && Math.abs(sumCalc - o.base_price) > 0.01) {
+                        const r = o.base_price / sumCalc;
+                        calcWash = Math.round(calcWash * r);
+                        calcDry = o.base_price - calcWash;
+                    } else if (sumCalc === 0 && (o.base_price || 0) > 0) {
+                        calcWash = o.base_price || 0;
+                    }
+                }
+                
                 const isExpanded = expandedOrder === o.id;
                 const timeAgo = getTimeAgo(date);
 
@@ -1059,11 +1374,23 @@ ${discountAmount > 0 ? `ส่วนลด: -${discountAmount.toLocaleString("th
                       <div className="flex justify-between items-start mb-3">
                         <div className="flex-1">
                           <div className="flex items-center gap-2 mb-1">
+                             {/* Checkbox for selection */}
+                             <div 
+                                onClick={(e) => { e.stopPropagation(); toggleSelection(o.id); }}
+                                className={`w-5 h-5 rounded-md border flex items-center justify-center cursor-pointer transition-all ${
+                                  selectedOrders.has(o.id) 
+                                    ? "bg-rose-500 border-rose-500 text-white" 
+                                    : "bg-white border-slate-300 hover:border-slate-400"
+                                }`}
+                             >
+                               {selectedOrders.has(o.id) && <Check size={14} strokeWidth={4} />}
+                             </div>
+
                             <span className="font-semibold text-slate-900 text-base">
                               {o.order_number || `#${o.id.slice(0, 8)}`}
                             </span>
-                            <span
-                              className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${o.status === "pending"
+                          <span
+                             className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${o.status === "pending"
                                 ? "bg-yellow-100 text-yellow-800"
                                 : o.status === "cancelled"
                                   ? "bg-rose-100 text-rose-800"
@@ -1074,8 +1401,24 @@ ${discountAmount > 0 ? `ส่วนลด: -${discountAmount.toLocaleString("th
                             >
                               {o.status}
                             </span>
+                            {/* Order Type Badge */}
+                            {o.order_type === 'booking' && (
+                                <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-purple-100 text-purple-700 ml-1">
+                                    📅 จอง
+                                </span>
+                            )}
+                            {o.order_type === 'normal' && (
+                                <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-blue-50 text-blue-600 ml-1">
+                                    ⚡ ด่วน
+                                </span>
+                            )}
                           </div>
                           <div className="text-[11px] text-slate-500">{timeAgo}</div>
+                          {o.order_type === 'booking' && o.scheduled_date && (
+                             <div className="text-[10px] text-purple-600 font-medium">
+                               นัดรับ: {new Date(o.scheduled_date).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit'})}
+                             </div>
+                          )}
                         </div>
                         <button
                           onClick={() => setExpandedOrder(isExpanded ? null : o.id)}
@@ -1145,25 +1488,53 @@ ${discountAmount > 0 ? `ส่วนลด: -${discountAmount.toLocaleString("th
                             </div>
                           )}
 
-                          <div className="rounded-2xl p-3 grid grid-cols-3 gap-2 text-center border border-slate-200">
+                          <div className="rounded-2xl p-3 grid grid-cols-2 lg:grid-cols-6 gap-2 text-center border border-slate-200 bg-slate-50/50">
                             <div>
-                              <div className="text-[10px] text-slate-500">ราคาSize</div>
+                              <div className="text-[10px] text-slate-500">ค่าซัก</div>
                               <div className="text-sm font-semibold text-slate-900">
-                                {(o.base_price ?? 0).toLocaleString()}฿
+                                {calcWash.toLocaleString()}฿
+                              </div>
+                            </div>
+                            <div>
+                              <div className="text-[10px] text-slate-500">ค่าอบ</div>
+                              <div className="text-sm font-semibold text-slate-900">
+                                {calcDry.toLocaleString()}฿
                               </div>
                             </div>
                             <div>
                               <div className="text-[10px] text-slate-500">ค่าน้ำยา</div>
                               <div className="text-sm font-semibold text-slate-900">
-                                {(o.supplies_total ?? 0).toLocaleString()}฿
+                                {((calcDetergent + calcSoftener) > 0 
+                                    ? (calcDetergent + calcSoftener) 
+                                    : (o.supplies_total ?? 0)).toLocaleString()
+                                }฿
+                                <div className="text-[9px] text-slate-400">
+                                    {calcDetergent > 0 && `ซัก ${calcDetergent}`}
+                                    {calcDetergent > 0 && calcSoftener > 0 && " + "}
+                                    {calcSoftener > 0 && `ปรับ ${calcSoftener}`}
+                                </div>
                               </div>
                             </div>
-                            <div>
-                              <div className="text-[10px] text-slate-500">ค่าส่ง</div>
-                              <div className="text-sm font-semibold text-slate-900">
-                                {(o.delivery_fee ?? 0).toLocaleString()}฿
+                              <div>
+                                <div className="text-[10px] text-slate-500">ค่าส่ง</div>
+                                <div className="text-sm font-semibold text-slate-900">
+                                  {(o.delivery_fee ?? 0).toLocaleString()}฿
+                                </div>
                               </div>
-                            </div>
+                              <div>
+                                <div className="text-[10px] text-slate-500">ค่าบริการ</div>
+                                <div className="text-sm font-semibold text-slate-900">
+                                  {(o.platform_fee ?? 0).toLocaleString()}฿
+                                </div>
+                              </div>
+                             {(o.discount_amount ?? 0) > 0 && (
+                              <div>
+                                <div className="text-[10px] text-slate-500">ส่วนลด</div>
+                                <div className="text-sm font-semibold text-rose-600">
+                                  -{(o.discount_amount ?? 0).toLocaleString()}฿
+                                </div>
+                              </div>
+                             )}
                           </div>
 
                           <div className="grid grid-cols-2 gap-2">
@@ -1183,6 +1554,14 @@ ${discountAmount > 0 ? `ส่วนลด: -${discountAmount.toLocaleString("th
                               แชร์ออเดอร์
                             </button>
                           </div>
+                          
+                          <button
+                            onClick={() => handleDeleteOrder(o.id)}
+                            className="w-full mt-2 py-2 rounded-2xl bg-rose-50 text-rose-600 text-xs font-medium flex items-center justify-center gap-1.5 active:scale-95 transition border border-rose-100 hover:bg-rose-100"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            <span className="font-bold">ลบออเดอร์นี้</span>
+                          </button>
                         </div>
                       )}
 
@@ -1230,6 +1609,34 @@ ${discountAmount > 0 ? `ส่วนลด: -${discountAmount.toLocaleString("th
               })
             )}
           </main>
+
+          {/* Bulk Action Bar */}
+          {selectedOrders.size > 0 && (
+            <div className="fixed bottom-6 left-0 right-0 px-4 z-50 animate-in slide-in-from-bottom-4">
+               <div className="max-w-md mx-auto bg-slate-900 text-white p-4 rounded-3xl shadow-2xl flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                     <div className="w-10 h-10 bg-slate-800 rounded-full flex items-center justify-center font-bold">
+                        {selectedOrders.size}
+                     </div>
+                     <span className="text-sm font-bold">Deleted Selected</span>
+                  </div>
+                  <div className="flex gap-2">
+                     <button 
+                        onClick={() => setSelectedOrders(new Set())}
+                        className="px-4 py-2 rounded-xl text-slate-400 hover:text-white text-xs font-bold transition"
+                     >
+                        Cancel
+                     </button>
+                     <button 
+                        onClick={handleBulkDelete}
+                        className="px-6 py-2 rounded-xl bg-rose-600 text-white text-xs font-bold shadow-lg shadow-rose-900/50 hover:bg-rose-500 transition active:scale-95"
+                     >
+                        Delete
+                     </button>
+                  </div>
+               </div>
+            </div>
+          )}
         </>
       )}
 
@@ -1330,7 +1737,7 @@ ${discountAmount > 0 ? `ส่วนลด: -${discountAmount.toLocaleString("th
                         <Phone size={14} className="animate-pulse" /> {r.contact_phone}
                       </a>
                       <button 
-                        onClick={() => copyToClipboard(r.contact_phone)}
+                        onClick={() => copyToClipboard(r.contact_phone ?? "")}
                         className="p-3.5 rounded-2xl bg-slate-50 text-slate-400 hover:text-slate-600 transition-colors"
                       >
                         <Clipboard size={16} />
@@ -1348,20 +1755,22 @@ ${discountAmount > 0 ? `ส่วนลด: -${discountAmount.toLocaleString("th
       {tab === "accounting" && (
         <div className="px-4 py-8 space-y-8 bg-slate-50/50 min-h-screen">
           {/* Period Toggles */}
-          <div className="flex bg-white p-1.5 rounded-2xl shadow-sm border border-slate-100 mb-6">
-            {(["today", "week", "month", "custom"] as const).map((p) => (
-              <button
-                key={p}
-                onClick={() => setAccountingPeriod(p)}
-                className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition-all ${
-                  accountingPeriod === p 
-                  ? "bg-slate-900 text-white shadow-md scale-[1.02]" 
-                  : "text-slate-500 hover:bg-slate-50"
-                }`}
-              >
-                {p === "today" ? "วันนี้" : p === "week" ? "สัปดาห์นี้" : p === "month" ? "เดือนนี้" : "กำหนดเอง"}
-              </button>
-            ))}
+
+          <div className="flex items-center gap-4 bg-white p-4 rounded-2xl shadow-sm border border-slate-100 mb-6">
+             <div className="flex-1">
+                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">เลือกเดือนที่ต้องการทำบัญชี</label>
+                 <input 
+                    type="month" 
+                    value={currentAccountMonth}
+                    onChange={(e) => setCurrentAccountMonth(e.target.value)}
+                    className="w-full text-lg font-bold text-slate-900 outline-none bg-transparent"
+                 />
+             </div>
+             <div className="h-10 w-[1px] bg-slate-100"></div>
+             <div className="flex-shrink-0">
+                  <p className="text-[10px] font-black text-emerald-500 uppercase tracking-widest text-right mb-0.5">Status</p>
+                  <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded text-xs font-bold">Active</span>
+             </div>
           </div>
 
           <div className="bg-gradient-to-br from-indigo-700 via-blue-700 to-indigo-800 rounded-[2.5rem] p-8 text-white shadow-2xl relative overflow-hidden ring-4 ring-white">
@@ -1397,14 +1806,22 @@ ${discountAmount > 0 ? `ส่วนลด: -${discountAmount.toLocaleString("th
 
           {/* Revenue Breakdown */}
           <div className="bg-white rounded-[2rem] border border-slate-100 p-6 shadow-xl space-y-6">
-            <h3 className="text-lg font-black text-slate-800 flex items-center gap-2">
-              <Package size={20} className="text-blue-600" />
-              รายละเอียดแยกตามบริการ
-            </h3>
+            <div className="flex justify-between items-center">
+                <h3 className="text-lg font-black text-slate-800 flex items-center gap-2">
+                  <Package size={20} className="text-blue-600" />
+                  รายละเอียดแยกตามบริการ
+                </h3>
+                <button
+                    onClick={handleExportCSV}
+                    className="flex items-center gap-2 px-4 py-2 bg-emerald-500 text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-200 active:scale-95 transition-all hover:bg-emerald-600"
+                >
+                    <Share2 size={16} /> Export CSV
+                </button>
+            </div>
             
             <div className="space-y-4">
               {[
-                { label: "ค่าซักผ้า", value: currentAccounting.wash, color: "bg-blue-500", icon: "🧺" },
+                { label: "ค่าซักผ้า", value: currentAccounting.wash, color: "bg-blue-500", icon: "🔥" }, // Corrected Icon from wash to match logic if needed, but keeping labels
                 { label: "ค่าอบผ้า", value: currentAccounting.dry, color: "bg-orange-500", icon: "🔥" },
                 { label: "ค่าส่งผ้า", value: currentAccounting.delivery, color: "bg-emerald-500", icon: "🚚" },
                 { label: "ค่าน้ำยา", value: currentAccounting.supplies, color: "bg-purple-500", icon: "🧴" },
@@ -1414,6 +1831,7 @@ ${discountAmount > 0 ? `ส่วนลด: -${discountAmount.toLocaleString("th
                 <div key={item.label} className="group cursor-default">
                   <div className="flex justify-between items-center mb-2">
                     <div className="flex items-center gap-2">
+                       {/* Icon logic can be improved but sticking to simple mapping */}
                       <span className="text-lg">{item.icon}</span>
                       <span className="text-sm font-bold text-slate-600">{item.label}</span>
                     </div>
@@ -1503,17 +1921,17 @@ ${discountAmount > 0 ? `ส่วนลด: -${discountAmount.toLocaleString("th
                         <Settings size={20} />
                     </div>
                     <div>
-                        <h3 className="font-black text-slate-800 text-lg">ค่าบริการระบบ</h3>
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Platform Service Fees</p>
+                        <h3 className="font-black text-slate-800 text-lg">ค่าบริการระบบ (Standard)</h3>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Platform Service Fee</p>
                     </div>
                 </div>
              </div>
 
              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {platformFees.map(pf => (
+                {platformFees.filter(pf => pf.fee_type === 'standard').map(pf => (
                    <div key={pf.id} className="bg-white rounded-[2.5rem] p-6 shadow-xl border border-slate-100 hover:border-rose-100 transition-all flex items-center justify-between group">
                       <div>
-                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{pf.fee_name || pf.fee_type}</p>
+                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Standard Fee</p>
                          <p className="text-2xl font-black text-slate-900">{pf.amount} <span className="text-sm font-medium opacity-30">฿</span></p>
                       </div>
                       <button 

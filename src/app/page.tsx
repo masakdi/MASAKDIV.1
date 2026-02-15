@@ -1,6 +1,7 @@
 "use client";
 import liff from "@line/liff";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   supa,
   BUCKET_SLIPS,
@@ -13,6 +14,7 @@ import {
   getUserCoupons,
   calculateDiscount,
   markCouponUsed,
+  getUserTier,
   type Coupon,
 } from "@/app/actions/coupon";
 import {
@@ -207,6 +209,7 @@ export default function HomePage() {
   const [currentStep, setCurrentStep] = useState(1);
   const [liffReady, setLiffReady] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [isDataLoading, setIsDataLoading] = useState(true);
   const [profile, setProfile] = useState<{
     name?: string;
     picture?: string;
@@ -226,6 +229,7 @@ export default function HomePage() {
   const [bookingConfigs, setBookingConfigs] = useState<
     { day_of_week: number }[]
   >([]);
+  const [googleMapLink, setGoogleMapLink] = useState("");
 
   const [slip, setSlip] = useState<File | null>(null);
   const [slipPreview, setSlipPreview] = useState<string | null>(null);
@@ -243,11 +247,14 @@ export default function HomePage() {
   const [hasUsedFreeDelivery, setHasUsedFreeDelivery] = useState<boolean>(false);
   const [freeDeliveryCount, setFreeDeliveryCount] = useState<number>(0);
   const [availablePoints, setAvailablePoints] = useState<number>(0);
+  /* ===== State ===== */
+  const router = useRouter();
   const [platformFee, setPlatformFee] = useState<number>(20);
 
   const [availableCoupons, setAvailableCoupons] = useState<any[]>([]);
-  const [googleMapLink, setGoogleMapLink] = useState("");
+  const [coupons, setCoupons] = useState<Coupon[]>([]);
   const [selectedCoupon, setSelectedCoupon] = useState<Coupon | null>(null);
+  const [userTier, setUserTier] = useState<string>("verified_user");
 
   const [busy, setBusy] = useState(false);
   const [showTerms, setShowTerms] = useState(false);
@@ -338,8 +345,9 @@ export default function HomePage() {
         calculateSupplyCharge(b.size, isFreeSoftener ? false : b.softener, b.detergent, supplies) * (b.qty || 1),
       0,
     );
+    const effectivePlatformFee = platformFee;
     const pf = baskets.reduce(
-      (s, b) => s + (b.size && b.service ? platformFee * (b.qty || 1) : 0),
+      (s, b) => s + (b.size && b.service ? effectivePlatformFee * (b.qty || 1) : 0),
       0,
     );
 
@@ -369,6 +377,14 @@ export default function HomePage() {
           if (selectedCoupon.max_discount_amount)
             cDisc = Math.min(cDisc, selectedCoupon.max_discount_amount);
         }
+
+        // Cap discount to never exceed the total amount payable
+        // discountableSubtotal + pf is the total cost. mDisc is already applied.
+        const maxDiscount = Math.max(0, discountableSubtotal + pf - mDisc);
+        if (cDisc > maxDiscount) {
+          cDisc = maxDiscount;
+        }
+
         cLabel = `คูปอง ${selectedCoupon.code}`;
       }
     }
@@ -505,64 +521,73 @@ export default function HomePage() {
   useEffect(() => {
     if (!mounted || !liffReady) return;
     const run = async () => {
-      await reloadPricing();
+      try {
+        await reloadPricing();
 
-      // Load draft from localStorage
-      const draft = localStorage.getItem("order_draft");
-      if (draft) {
-        try {
-          const d = JSON.parse(draft);
-          if (d.currentStep) setCurrentStep(d.currentStep);
-          if (d.nickname) setNickname(d.nickname);
-          if (d.phone) setPhone(d.phone);
-          if (d.address) setAddress(d.address);
-          if (d.deliveryMode) setDeliveryMode(d.deliveryMode);
-          if (d.baskets) setBaskets(d.baskets);
-          if (d.note) setNote(d.note);
-          if (d.consent) setConsent(d.consent);
-          if (d.orderType) setOrderType(d.orderType);
-          if (d.scheduledDate) setScheduledDate(d.scheduledDate);
-          if (d.googleMapLink) setGoogleMapLink(d.googleMapLink);
-        } catch (e) {
-          console.error("Restore draft error", e);
+        // Load draft from localStorage
+        const draft = localStorage.getItem("order_draft");
+        if (draft) {
+          try {
+            const d = JSON.parse(draft);
+            if (d.currentStep) setCurrentStep(d.currentStep);
+            if (d.nickname) setNickname(d.nickname);
+            if (d.phone) setPhone(d.phone);
+            if (d.address) setAddress(d.address);
+            if (d.deliveryMode) setDeliveryMode(d.deliveryMode);
+            if (d.baskets) setBaskets(d.baskets);
+            if (d.note) setNote(d.note);
+            if (d.consent) setConsent(d.consent);
+            if (d.orderType) setOrderType(d.orderType);
+            if (d.scheduledDate) setScheduledDate(d.scheduledDate);
+            if (d.googleMapLink) setGoogleMapLink(d.googleMapLink);
+          } catch (e) {
+            console.error("Restore draft error", e);
+          }
         }
-      }
 
-      const uid = sessionStorage.getItem("user_id");
-      if (uid) {
-        fetch(`/api/membership?user_id=${uid}`)
-          .then((r) => r.json())
-          .then((d) => {
-            setMembershipTier(d.user.membership_tier || "verified_user");
-            setCompletedOrdersCount(d.user.completed_orders_count || 0);
-            setHasUsedFreeDelivery(!!d.user.has_used_free_delivery);
-            setFreeDeliveryCount(d.user.free_delivery_count || 0);
-            setAvailablePoints(d.points.available_points || 0);
-            const u = d.user;
-            // Set profile values ONLY if current field is empty (preserves typed draft)
-            setNickname((v) => v || u.nickname || u.contact_name || "");
-            setPhone((v) => v || formatPhone(u.phone || u.contact_phone || ""));
-            setAddress((v) => v || u.contact_address || "");
-            setGoogleMapLink((v) => v || u.google_map_link || "");
-          });
-        getUserCoupons(uid).then(setAvailableCoupons);
+        const promises = [];
+        const uid = sessionStorage.getItem("user_id");
+
+        if (uid) {
+          promises.push(
+            fetch(`/api/membership?user_id=${uid}`)
+              .then((r) => r.json())
+              .then((d) => {
+                setMembershipTier(d.user.membership_tier || "verified_user");
+                setCompletedOrdersCount(d.user.completed_orders_count || 0);
+                setHasUsedFreeDelivery(!!d.user.has_used_free_delivery);
+                setFreeDeliveryCount(d.user.free_delivery_count || 0);
+                setAvailablePoints(d.points.available_points || 0);
+                const u = d.user;
+                // Set profile values ONLY if current field is empty (preserves typed draft)
+                setNickname((v) => v || u.nickname || u.contact_name || "");
+                setPhone((v) => v || formatPhone(u.phone || u.contact_phone || ""));
+                setAddress((v) => v || u.contact_address || "");
+                setGoogleMapLink((v) => v || u.google_map_link || "");
+              })
+          );
+          promises.push(getUserCoupons(uid).then(setAvailableCoupons));
+        }
+
+        // Load pricing configurations (Base Prices, Delivery, Supplies, Platform Fee)
+        promises.push(reloadPricing());
+
+        promises.push(
+          supa
+            .from("booking_configs")
+            .select("day_of_week")
+            .eq("is_active", true)
+            .then((r) => {
+              if (r.data) setBookingConfigs(r.data);
+            })
+        );
+
+        await Promise.all(promises);
+      } catch (err) {
+        console.error("Error loading initial data:", err);
+      } finally {
+        setIsDataLoading(false);
       }
-      supa
-        .from("platform_fees")
-        .select("amount")
-        .eq("fee_type", "standard")
-        .eq("active", true)
-        .single()
-        .then((r) => {
-          if (r.data) setPlatformFee(r.data.amount);
-        });
-      supa
-        .from("booking_configs")
-        .select("day_of_week")
-        .eq("is_active", true)
-        .then((r) => {
-          if (r.data) setBookingConfigs(r.data);
-        });
     };
     run();
   }, [liffReady, mounted]);
@@ -604,16 +629,14 @@ export default function HomePage() {
 
   const reloadPricing = async () => {
     try {
-      const [bp, df, sp] = await Promise.allSettled([
+      const [bp, df, sp, pf] = await Promise.allSettled([
         supa
           .from("laundry_base_prices")
-          .select("size, svc, price_ex_delivery, breakdown")
+          .select("size, svc, price_ex_delivery")
           .eq("active", true),
-        supa
-          .from("delivery_fee_schedules")
-          .select("mode, fee_1, fee_2, extra_per_basket")
-          .eq("active", true),
+        supa.from("delivery_fee_schedules").select("*").eq("active", true),
         supa.from("laundry_supplies").select("key, size, price").eq("active", true),
+        supa.from("platform_fees").select("amount").eq("fee_type", "standard").single(),
       ]);
       if (bp.status === "fulfilled" && !bp.value.error)
         setBasePrices(bp.value.data);
@@ -621,6 +644,8 @@ export default function HomePage() {
         setDeliveryFees(df.value.data);
       if (sp.status === "fulfilled" && !sp.value.error)
         setSupplies(sp.value.data);
+      if (pf.status === "fulfilled" && !pf.value.error && pf.value.data)
+        setPlatformFee(pf.value.data.amount);
     } catch (e) {
       console.error(e);
     }
@@ -791,11 +816,13 @@ export default function HomePage() {
 
   return (
     <div className="min-h-[100dvh] bg-white text-slate-900 [--tint:#0A84FF]">
-      {isLoggingIn && (
-        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-white">
+      {(isLoggingIn || isDataLoading) && (
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-white transition-opacity duration-300">
           <div className="flex flex-col items-center gap-4">
             <div className="h-12 w-12 animate-spin rounded-full border-4 border-slate-200 border-t-[color:var(--tint)]" />
-            <p className="text-sm text-slate-600">กำลังเข้าสู่ระบบ...</p>
+            <p className="text-sm text-slate-600 animate-pulse">
+              {isLoggingIn ? "กำลังเข้าสู่ระบบ..." : "กำลังเตรียมข้อมูล..."}
+            </p>
           </div>
         </div>
       )}
@@ -1335,9 +1362,10 @@ export default function HomePage() {
                 const shipShare = deliveryBreakdown[idx] || 0;
                                // Calculate portions
                 const servicePriceExFee = (wash + dry + suppliesCostLine) * q + shipShare;
-                const lineFee = platformFee * q;
+                const effectiveLineFee = platformFee;
+                const lineFee = effectiveLineFee * q;
 
-                // ยอดก่อนหักส่วนลด (รวมค่าธรรมเนียมแล้ว)
+                // ยอดก่อนหักส่วนลด (รวมค่าธรรมเนียมแล้ว - ตามสิทธิ์สมาชิก)
                 const lineSubtotal = servicePriceExFee + lineFee;
 
                 // Calculate share of discount (only on services/supplies/delivery)
@@ -1603,14 +1631,28 @@ export default function HomePage() {
                               const sub = basePrice + suppliesTotal + deliveryFee;
                               const isDisabled = (c.min_order_amount && sub < c.min_order_amount) || c.is_expired;
                               
+                              // Check Role Eligibility
+                              const allowed = typeof c.allowed_roles === 'string' ? JSON.parse(c.allowed_roles) : (c.allowed_roles || ['all']);
+                              const isForEveryone = allowed.includes('all');
+                              const isEligible = isForEveryone || allowed.includes(userTier);
+                              
+                              const handleCouponAction = () => {
+                                  if (!isEligible) {
+                                      // Redirect to membership
+                                       router.push("/Users/Membership");
+                                       return;
+                                  }
+                                  applyCoupon(c);
+                              };
+
                               return (
                                 <button
                                   key={c.id}
                                   type="button"
-                                  disabled={!!isDisabled}
-                                  onClick={() => applyCoupon(c)}
+                                  disabled={!!isDisabled && isEligible} // Disable if invalid amount/expired, BUT allow click if ineligible (to redirect)
+                                  onClick={handleCouponAction}
                                   className={`relative w-full h-26 flex drop-shadow-sm transition-all active:scale-[0.98] group ${
-                                    isDisabled ? "opacity-60 grayscale cursor-not-allowed" : "hover:-translate-y-1"
+                                    isDisabled && isEligible ? "opacity-60 grayscale cursor-not-allowed" : "hover:-translate-y-1"
                                   }`}
                                 >
                                   {/* Front Notch */}
@@ -1620,9 +1662,11 @@ export default function HomePage() {
                                   <div 
                                     className="flex-1 pl-7 pr-3 py-4 relative flex flex-col justify-between overflow-hidden text-white"
                                     style={{
-                                        backgroundImage: isDisabled 
-                                            ? `radial-gradient(circle at 0 0, transparent 10px, #94a3b8 10.5px), radial-gradient(circle at 0 100%, transparent 10px, #94a3b8 10.5px)`
-                                            : `radial-gradient(circle at 0 0, transparent 10px, #1257FF 10.5px), radial-gradient(circle at 0 100%, transparent 10px, #1257FF 10.5px)`,
+                                        backgroundImage: !isEligible 
+                                            ? `radial-gradient(circle at 0 0, transparent 10px, #334155 10.5px), radial-gradient(circle at 0 100%, transparent 10px, #334155 10.5px)`
+                                            : isDisabled 
+                                                ? `radial-gradient(circle at 0 0, transparent 10px, #94a3b8 10.5px), radial-gradient(circle at 0 100%, transparent 10px, #94a3b8 10.5px)`
+                                                : `radial-gradient(circle at 0 0, transparent 10px, #1257FF 10.5px), radial-gradient(circle at 0 100%, transparent 10px, #1257FF 10.5px)`,
                                         backgroundPosition: 'top left, bottom left',
                                         backgroundSize: '100% 51%',
                                         backgroundRepeat: 'no-repeat'
@@ -1633,6 +1677,16 @@ export default function HomePage() {
                                         <h3 className="text-white/90 text-[9px] font-black uppercase tracking-wider">
                                           {c.description || 'LADY VOUCHER'}
                                         </h3>
+                                        {!isEligible && (
+                                            <span className="px-1.5 py-0.5 bg-yellow-400 text-yellow-900 text-[8px] font-black rounded uppercase flex items-center gap-1 w-fit mb-1">
+                                                <Crown size={8} /> Exclusive
+                                            </span>
+                                        )}
+                                        {isForEveryone && isEligible && (
+                                            <span className="px-1.5 py-0.5 bg-white/20 text-white text-[8px] font-bold rounded uppercase w-fit mb-1">
+                                                Everyone
+                                            </span>
+                                        )}
                                         <div className="flex items-baseline gap-1">
                                           <h2 className="text-3xl font-black tracking-tighter leading-none">
                                             {c.discount_type === "percent" ? `${c.discount_value}%` : money(c.discount_value).replace('฿', '')}
@@ -1675,6 +1729,10 @@ export default function HomePage() {
                                     {!isDisabled ? (
                                       <div className="w-full py-1 rounded-xl bg-blue-600 text-white text-[10px] font-black uppercase tracking-tighter shadow-lg shadow-blue-100 group-hover:bg-slate-900 transition-colors text-center">
                                         ใช้เลย
+                                      </div>
+                                    ) : !isEligible ? (
+                                       <div className="w-full py-1 rounded-xl bg-slate-800 text-white text-[10px] font-black uppercase tracking-tighter shadow-lg shadow-slate-200 transition-colors text-center flex items-center justify-center gap-1">
+                                        Unlock
                                       </div>
                                     ) : (
                                       <div className="text-[8px] font-black text-rose-500 uppercase leading-none text-center">
@@ -1773,7 +1831,7 @@ export default function HomePage() {
                               <div className="flex justify-between">
                                 <span>ค่าธรรมเนียมระบบ</span>
                                 <span className="font-medium text-zinc-700">
-                                  {money(platformFee)}
+                                  {money(membershipTier !== 'verified_user' ? 0 : platformFee)}
                                 </span>
                               </div>
                               <div className="flex justify-between">

@@ -1,6 +1,6 @@
 -- WARNING: This schema is for context only and is not meant to be run.
 -- Table order and constraints may not be valid for execution.
---ตรวจสอบหน่อยว่าผมต้องอัปเดต schema.sql เพิ่มเติมไหม 
+
 CREATE TABLE public.admin_groups (
   id bigint NOT NULL DEFAULT nextval('admin_groups_id_seq'::regclass),
   group_id text NOT NULL UNIQUE,
@@ -36,6 +36,7 @@ CREATE TABLE public.coupons (
   created_at timestamp with time zone DEFAULT now(),
   updated_at timestamp with time zone DEFAULT now(),
   is_public boolean DEFAULT false,
+  allowed_roles jsonb DEFAULT '["all"]'::jsonb,
   CONSTRAINT coupons_pkey PRIMARY KEY (id)
 );
 CREATE TABLE public.delivery_fee_schedules (
@@ -58,9 +59,10 @@ CREATE TABLE public.laundry_base_prices (
 );
 CREATE TABLE public.laundry_supplies (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
-  key text NOT NULL UNIQUE,
+  key text NOT NULL,
   price numeric NOT NULL CHECK (price >= 0::numeric),
   active boolean NOT NULL DEFAULT true,
+  size text,
   CONSTRAINT laundry_supplies_pkey PRIMARY KEY (id)
 );
 CREATE TABLE public.membership_tiers (
@@ -173,8 +175,8 @@ CREATE TABLE public.user_coupons (
   order_id uuid,
   created_at timestamp with time zone DEFAULT now(),
   CONSTRAINT user_coupons_pkey PRIMARY KEY (id),
-  CONSTRAINT user_coupons_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id),
   CONSTRAINT user_coupons_coupon_id_fkey FOREIGN KEY (coupon_id) REFERENCES public.coupons(id),
+  CONSTRAINT user_coupons_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id),
   CONSTRAINT user_coupons_order_id_fkey FOREIGN KEY (order_id) REFERENCES public.orders(id)
 );
 CREATE TABLE public.user_points (
@@ -213,6 +215,9 @@ CREATE TABLE public.users (
   birth_date date,
   google_map_link text,
   has_used_free_delivery boolean DEFAULT false,
+  free_delivery_count integer DEFAULT 0,
+  last_activity_at timestamp with time zone DEFAULT now(),
+  last_rank_reset_at timestamp with time zone DEFAULT now(),
   CONSTRAINT users_pkey PRIMARY KEY (id),
   CONSTRAINT users_id_fkey FOREIGN KEY (id) REFERENCES auth.users(id)
 );

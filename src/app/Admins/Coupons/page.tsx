@@ -60,6 +60,7 @@ export default function AdminCouponsPage() {
     start_date: new Date().toISOString().split("T")[0],
     end_date: "",
     applicable_types: ["all"],
+    allowed_roles: ["all"],
     is_active: true,
     is_public: false,
   };
@@ -164,6 +165,10 @@ export default function AdminCouponsPage() {
         typeof coupon.applicable_types === "string"
           ? JSON.parse(coupon.applicable_types)
           : coupon.applicable_types,
+      allowed_roles:
+        typeof coupon.allowed_roles === "string"
+          ? JSON.parse(coupon.allowed_roles)
+          : (coupon.allowed_roles || ["all"]),
       is_active: coupon.is_active,
       is_public: coupon.is_public || false,
     });
@@ -220,6 +225,28 @@ export default function AdminCouponsPage() {
         };
       } else {
         return { ...prev, applicable_types: [...current, type] };
+      }
+    });
+  };
+
+  const toggleRole = (role: string) => {
+    setFormData((prev) => {
+      let current = [...(prev.allowed_roles || ["all"])];
+
+      if (role === "all") {
+        return { ...prev, allowed_roles: ["all"] };
+      }
+
+      current = current.filter((t) => t !== "all");
+
+      if (current.includes(role)) {
+        const next = current.filter((t) => t !== role);
+        return {
+          ...prev,
+          allowed_roles: next.length === 0 ? ["all"] : next,
+        };
+      } else {
+        return { ...prev, allowed_roles: [...current, role] };
       }
     });
   };
@@ -369,6 +396,14 @@ export default function AdminCouponsPage() {
                   <div className="flex justify-between">
                     <span>ใช้ได้กับ:</span>
                     <span>{types.join(", ")}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Roles:</span>
+                    <span>
+                      {(coupon.allowed_roles 
+                        ? (typeof coupon.allowed_roles === 'string' ? JSON.parse(coupon.allowed_roles) : coupon.allowed_roles) 
+                        : ["all"]).join(", ")}
+                    </span>
                   </div>
                   <div className="flex justify-between">
                     <span>หมดอายุ:</span>
@@ -612,33 +647,60 @@ export default function AdminCouponsPage() {
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2 ml-1">
-                    ใช้ได้กับบริการ
-                  </label>
-                  <div className="flex flex-wrap gap-2">
-                    {["all", "laundry", "dry", "delivery"].map((type) => (
-                      <button
-                        key={type}
-                        type="button"
-                        onClick={() => toggleType(type)}
-                        className={`px-4 py-2 rounded-xl text-xs font-bold transition-all border ${
-                          formData.applicable_types.includes(type)
-                            ? "bg-blue-600 text-white border-blue-600 shadow-md transform scale-105"
-                            : "bg-white text-slate-600 border-slate-100 hover:bg-slate-50"
-                        }`}
-                      >
-                        {type === "all"
-                          ? "ทั้งหมด"
-                          : type === "laundry"
-                            ? "ซัก"
-                            : type === "dry"
-                              ? "อบ"
-                              : "ขนส่ง"}
-                      </button>
-                    ))}
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2 ml-1">
+                      ใช้ได้กับบริการ
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      {["all", "laundry", "dry", "delivery"].map((type) => (
+                        <button
+                          key={type}
+                          type="button"
+                          onClick={() => toggleType(type)}
+                          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all border ${
+                            formData.applicable_types.includes(type)
+                              ? "bg-blue-600 text-white border-blue-600 shadow-md transform scale-105"
+                              : "bg-white text-slate-600 border-slate-100 hover:bg-slate-50"
+                          }`}
+                        >
+                          {type === "all"
+                            ? "ทุกบริการ"
+                            : type === "laundry"
+                              ? "ซัก"
+                              : type === "dry"
+                                ? "อบ"
+                                : "ขนส่ง"}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2 ml-1">
+                      สิทธิ์การใช้งาน (User Roles)
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      {[
+                        { id: "all", label: "ทุกคน (Everyone)" },
+                        { id: "member", label: "Member ปกติ" },
+                        { id: "silver", label: "Silver" },
+                        { id: "gold", label: "Gold" }
+                      ].map((role) => (
+                        <button
+                          key={role.id}
+                          type="button"
+                          onClick={() => toggleRole(role.id)}
+                          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all border ${
+                            (formData.allowed_roles || ["all"]).includes(role.id)
+                              ? "bg-purple-600 text-white border-purple-600 shadow-md transform scale-105"
+                              : "bg-white text-slate-600 border-slate-100 hover:bg-slate-50"
+                          }`}
+                        >
+                          {role.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
 
                 <div className="flex items-center gap-6 pt-2">
                   <div className="flex items-center gap-3">
@@ -659,23 +721,8 @@ export default function AdminCouponsPage() {
                     </label>
                   </div>
 
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="checkbox"
-                      id="isPublic"
-                      checked={formData.is_public}
-                      onChange={(e) =>
-                        setFormData({ ...formData, is_public: e.target.checked })
-                      }
-                      className="w-5 h-5 rounded-lg border-slate-300 text-orange-500 focus:ring-orange-500 transition-all"
-                    />
-                    <label
-                      htmlFor="isPublic"
-                      className="text-sm font-semibold text-slate-700"
-                    >
-                      สาธารณะ (แจกทุกคน)
-                    </label>
-                  </div>
+                 
+                  
                 </div>
               </div>
 

@@ -104,7 +104,9 @@ export async function POST(req: Request) {
       const qty = basket.qty || 1;
       // ลบค่าธรรมเนียมออกก่อนเก็บเข้า basePrice เพื่อให้ตรงกับโครงสร้างใน Frontend
       basePrice += Math.max(0, fullServicePrice - platformFee) * qty;
-      totalPlatformFee += platformFee * qty;
+      
+      const effectiveFee = membershipTier !== 'verified_user' ? 0 : platformFee;
+      totalPlatformFee += effectiveFee * qty;
 
       // คำนวณค่าน้ำยา
       if (basket.softener || basket.detergent) {

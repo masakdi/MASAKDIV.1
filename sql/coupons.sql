@@ -13,6 +13,7 @@ CREATE TABLE public.coupons (
   start_date timestamp with time zone DEFAULT now(),
   end_date timestamp with time zone,
   applicable_types jsonb DEFAULT '["all"]'::jsonb, -- ['all', 'laundry', 'dry', 'delivery']
+  allowed_roles jsonb DEFAULT '["all"]'::jsonb, -- ['all', 'member', 'silver', 'gold']
   is_active boolean DEFAULT true,
   created_at timestamp with time zone DEFAULT now(),
   updated_at timestamp with time zone DEFAULT now(),

@@ -17,6 +17,7 @@ export type Coupon = {
   start_date: string;
   end_date: string | null;
   applicable_types: string[]; // JSONB stored as array
+  allowed_roles: string[]; // New: ["all", "member", "silver", "gold"]
   is_active: boolean;
   is_public: boolean;
   created_at: string;
@@ -36,7 +37,8 @@ export async function getCoupons() {
     min_order_amount: Number(c.min_order_amount),
     max_discount_amount: c.max_discount_amount ? Number(c.max_discount_amount) : null,
     usage_limit: c.usage_limit ? Number(c.usage_limit) : null,
-    used_count: Number(c.used_count || 0)
+    used_count: Number(c.used_count || 0),
+    allowed_roles: typeof c.allowed_roles === 'string' ? JSON.parse(c.allowed_roles) : (c.allowed_roles || ['all'])
   })) as Coupon[];
 }
 
@@ -120,6 +122,18 @@ export async function collectCoupon(userId: string, code: string) {
     return { error: 'This coupon has reached its usage limit' };
   }
 
+  // Role validation
+  const allowedRoles = typeof coupon.allowed_roles === 'string' 
+        ? JSON.parse(coupon.allowed_roles) 
+        : (coupon.allowed_roles || ['all']);
+
+  if (!allowedRoles.includes('all')) {
+     const userTier = await getUserTier(userId);
+     if (!allowedRoles.includes(userTier)) {
+         return { error: 'You are not eligible for this coupon.' };
+     }
+  }
+
   // 2. Check if user already collected
   const { data: existing, error: existingError } = await supabase
     .from('user_coupons')
@@ -186,6 +200,9 @@ export async function getUserCoupons(userId: string) {
             min_order_amount: Number(couponData?.min_order_amount || 0),
             max_discount_amount: couponData?.max_discount_amount ? Number(couponData.max_discount_amount) : null,
             user_coupon_id: item.id,
+            allowed_roles: typeof couponData?.allowed_roles === 'string' 
+                ? JSON.parse(couponData.allowed_roles) 
+                : (couponData?.allowed_roles || ['all']),
             is_public: couponData?.is_public || false,
             is_expired: isExpired
         };
@@ -201,6 +218,9 @@ export async function getUserCoupons(userId: string) {
             min_order_amount: Number(pc.min_order_amount || 0),
             max_discount_amount: pc.max_discount_amount ? Number(pc.max_discount_amount) : null,
             user_coupon_id: `public_${pc.id}`, // Virtual ID
+            allowed_roles: typeof pc.allowed_roles === 'string' 
+                ? JSON.parse(pc.allowed_roles) 
+                : (pc.allowed_roles || ['all']),
             is_public: true,
             is_expired: pc.end_date ? new Date(pc.end_date) < now : false
         }));
@@ -208,7 +228,18 @@ export async function getUserCoupons(userId: string) {
     return [...formattedCollected, ...formattedPublic];
 }
 
-export async function calculateDiscount(couponCode: string, orderTotal: number, serviceType: string = 'all') {
+export async function getUserTier(userId: string) {
+    const { data, error } = await supabase
+        .from('users')
+        .select('membership_tier')
+        .eq('id', userId)
+        .single();
+    
+    if (error) return 'verified_user';
+    return data?.membership_tier || 'verified_user';
+}
+
+export async function calculateDiscount(couponCode: string, orderTotal: number, serviceType: string = 'all', userId?: string) {
 
      const { data: coupon, error } = await supabase
     .from('coupons')
@@ -233,6 +264,20 @@ export async function calculateDiscount(couponCode: string, orderTotal: number, 
         
     if (!types.includes('all') && !types.includes(serviceType)) {
         return { valid: false, message: `Coupon not applicable for ${serviceType}` };
+    }
+
+    // Role Check
+    if (userId) {
+        const allowedRoles: string[] = typeof coupon.allowed_roles === 'string'
+            ? JSON.parse(coupon.allowed_roles)
+            : (coupon.allowed_roles || ['all']);
+
+        if (!allowedRoles.includes('all')) {
+             const userTier = await getUserTier(userId);
+             if (!allowedRoles.includes(userTier)) {
+                 return { valid: false, message: `For ${allowedRoles.join(', ')} members only` };
+             }
+        }
     }
 
     if (orderTotal < coupon.min_order_amount) {

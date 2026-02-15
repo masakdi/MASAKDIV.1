@@ -72,6 +72,8 @@ export async function POST(req: Request) {
       contact_phone: body.contact_phone?.replace(/\D/g, ""),
       order_type: body.order_type || 'normal',
       scheduled_date: body.scheduled_date || null,
+      wash_price: body.wash_price ?? 0,
+      dry_price: body.dry_price ?? 0,
     };
 
     // ✅ insert ลงตาราง orders
