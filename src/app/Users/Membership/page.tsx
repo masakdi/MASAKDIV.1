@@ -485,13 +485,13 @@ export default function MembershipPage() {
                 <div className="space-y-4 text-center">
                   <h3 className="text-sm font-bold text-slate-800">ชำระเงิน {buyTiers.find(t => t.name === selectedTier)?.price} บาท</h3>
                   <div className="flex justify-center">
-                    <div className="p-4 bg-white rounded-2xl border-2 border-slate-200 shadow-md">
+                    
                       <img
                         src="/Newqrcode.jpg"
                         alt="PromptPay QR Code"
-                        className="w-64 h-64 object-contain"
+                        className="w-128 h-128 object-contain"
                       />
-                    </div>
+                    
                   </div>
                   <button
                     type="button"
