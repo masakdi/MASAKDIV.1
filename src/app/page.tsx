@@ -1870,14 +1870,14 @@ export default function HomePage() {
                   <div className="mx-auto text-center space-y-4">
                     <h3 className="text-sm font-bold text-slate-800">Scan QR Code to Pay</h3>
                     <div className="flex justify-center">
-                      <div className="p-4 bg-white rounded-2xl border-2 border-slate-200 shadow-md">
+                     
                         <img
                           id="qrImage"
                           src="/Newqrcode.jpg"
                           alt="PromptPay QR Code"
-                          className="w-64 h-64 object-contain"
+                          className="w-128 h-128 object-contain"
                         />
-                      </div>
+                      
                     </div>
                     <button
                       type="button"
