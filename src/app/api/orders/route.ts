@@ -2,17 +2,17 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { sendDiscordNotification } from "@/app/lib/discord";
 
-// ✅ ใช้ service role key เพื่อ bypass RLS
-const supa = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
-
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
   try {
+    // ✅ ใช้ service role key เพื่อ bypass RLS
+    const supa = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+
     const body = await req.json();
 
     // ✅ ตรวจค่าที่จำเป็นต้องมี

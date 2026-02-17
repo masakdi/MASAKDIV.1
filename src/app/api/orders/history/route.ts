@@ -1,15 +1,15 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-/* ===== Supabase Server Client ===== */
-const supa = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY! // ใช้ Service Role เพื่ออ่านทุก user
-);
-
 /* ===== API: ดึงประวัติออเดอร์ของผู้ใช้ ===== */
 export async function POST(req: Request) {
   try {
+    /* ===== Supabase Server Client ===== */
+    const supa = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY! // ใช้ Service Role เพื่ออ่านทุก user
+    );
+
     const { user_id } = await req.json();
     if (!user_id) {
       return NextResponse.json({ error: "Missing user_id" }, { status: 400 });

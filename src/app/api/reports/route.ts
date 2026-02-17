@@ -5,12 +5,6 @@ import { createClient } from "@supabase/supabase-js";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-// ใช้ service role "เฉพาะฝั่งเซิร์ฟเวอร์"
-const supa = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
-
 type ReportPayload = {
   category: string;
   detail: string;
@@ -26,6 +20,12 @@ type RequestBody = {
 
 export async function POST(req: NextRequest) {
   try {
+    // ใช้ service role "เฉพาะฝั่งเซิร์ฟเวอร์"
+    const supa = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+
     const body: RequestBody = await req.json();
     const { payload, consent } = body;
 

@@ -1,11 +1,31 @@
 'use client'
-import { createClient } from '@supabase/supabase-js'
+import { createClient, SupabaseClient } from '@supabase/supabase-js'
 
-const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-const anon = process.env.NEXT_PUBLIC_SUPABASE_KEY
+let supabaseClientInstance: SupabaseClient | null = null
 
-if (!url || !anon) {
-  throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_KEY')
+function getSupabaseClient(): SupabaseClient {
+  if (!supabaseClientInstance) {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const anon = process.env.NEXT_PUBLIC_SUPABASE_KEY
+
+    if (!url || !anon) {
+      throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_KEY')
+    }
+
+    supabaseClientInstance = createClient(url, anon, {
+      auth: {
+        persistSession: true,   // เก็บ session user ใน localStorage
+        autoRefreshToken: true, // ต่ออายุ token อัตโนมัติ
+      },
+      realtime: {
+        params: { eventsPerSecond: 2 },
+      },
+      global: {
+        headers: { 'x-my-custom-header': 'laundry-app' },
+      },
+    })
+  }
+  return supabaseClientInstance
 }
 
 /**
@@ -13,18 +33,15 @@ if (!url || !anon) {
  * - ผู้ใช้ล็อกอินด้วย LINE หรือ Supabase Auth
  * - RLS จะทำงานอัตโนมัติ เพราะ JWT ถูกแนบใน header ทุก request
  */
-export const supa = createClient(url, anon, {
-  auth: {
-    persistSession: true,   // เก็บ session user ใน localStorage
-    autoRefreshToken: true, // ต่ออายุ token อัตโนมัติ
-  },
-  realtime: {
-    params: { eventsPerSecond: 2 },
-  },
-  global: {
-    headers: { 'x-my-custom-header': 'laundry-app' },
-  },
-})
+export const supa = new Proxy(
+  {},
+  {
+    get: (target, prop) => {
+      const client = getSupabaseClient()
+      return Reflect.get(client, prop)
+    },
+  }
+) as SupabaseClient
 
 /* ===== Storage Buckets ===== */
 // สลิปชำระเงิน

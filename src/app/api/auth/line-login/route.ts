@@ -1,12 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-const admin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  { auth: { persistSession: false } }
-);
-
 /* =========================
    ✅ เพิ่มตรงนี้ (GET)
    ========================= */
@@ -26,6 +20,12 @@ export async function GET(req: Request) {
    ========================= */
 export async function POST(req: Request) {
   try {
+    const admin = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      { auth: { persistSession: false } }
+    );
+
     const { line_id, name, picture } = await req.json();
     if (!line_id)
       return NextResponse.json({ error: "Missing line_id" }, { status: 400 });

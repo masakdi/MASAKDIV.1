@@ -1873,7 +1873,7 @@ export default function HomePage() {
                     </p>
                     <div className="relative inline-block p-4 bg-white rounded-[2.5rem] border border-zinc-100 shadow-inner mb-4 group">
                       <img
-                        src="/promptpay-qr.png"
+                        src="/Newqrcode.jpg"
                         alt="PromptPay"
                         className="w-48 h-48 object-contain"
                       />

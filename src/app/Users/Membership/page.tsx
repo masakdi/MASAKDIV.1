@@ -485,7 +485,7 @@ export default function MembershipPage() {
                   <p className="text-xs font-bold text-slate-900 uppercase tracking-widest mb-3">Scan QR เพื่อชำระเงิน {buyTiers.find(t => t.name === selectedTier)?.price} บาท</p>
                   <div className="inline-block p-4 bg-white rounded-3xl border border-slate-100 shadow-sm">
                     <img
-                      src="/promptpay-qr.png"
+                      src="/Newqrcode.jpg"
                       alt="PromptPay"
                       className="w-40 h-40 object-contain"
                     />
