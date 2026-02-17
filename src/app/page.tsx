@@ -1867,63 +1867,32 @@ export default function HomePage() {
                   </div>
 
                   {/* QR Payment Section */}
-                  <div className="flex justify-center px-4">
-                    <div className="w-full max-w-sm bg-gradient-to-b from-cyan-100 via-blue-50 to-white rounded-3xl overflow-hidden shadow-2xl border border-cyan-100">
-                      {/* Header */}
-                      <div className="bg-gradient-to-r from-blue-900 via-slate-800 to-slate-900 px-6 py-5 text-center">
-                        <div className="flex items-center justify-center gap-3 mb-1">
-                          <div className="w-5 h-5 bg-white rounded flex items-center justify-center">
-                            <span className="text-xs font-black text-blue-900">☑</span>
-                          </div>
-                          <span className="text-white font-black text-sm tracking-wide">THAI QR PAYMENT</span>
-                        </div>
-                      </div>
-
-                      {/* Content */}
-                      <div className="p-6 space-y-5 bg-white">
-                        {/* PromptPay Badge */}
-                        <div className="text-center">
-                          <div className="inline-block px-4 py-2 bg-gray-100 rounded-md border-2 border-gray-300">
-                            <span className="text-xs font-bold text-gray-700 tracking-wide">PromptPay</span>
-                          </div>
-                        </div>
-
-                        {/* QR Code */}
-                        <div className="flex justify-center py-3">
-                          <div className="p-5 bg-gray-50 rounded-2xl border-2 border-gray-200">
-                            <img
-                              src="/Newqrcode.jpg"
-                              alt="PromptPay QR Code"
-                              className="w-56 h-56 object-contain"
-                            />
-                          </div>
-                        </div>
-                        
-                      {/* Info Section */}
-                      <div className="bg-gradient-to-br from-amber-50 to-yellow-50 rounded-2xl p-5 space-y-3 text-center border border-amber-100">
-                        <p className="text-xs text-amber-900 font-bold uppercase tracking-wide">สแกน QR เพื่อเข้าบัญชี</p>
-                        <div className="space-y-1">
-                          <p className="text-xs font-medium text-slate-700">น.ส. อารียา ภาครองหลวง</p>
-                          <p className="text-xs text-slate-600 font-mono">XXX-x-x7609-x</p>
-                          <p className="text-xs text-slate-500">เลขที่อ้างอิง 004666007419918</p>
-                        </div>
-                      </div>
-
-                      {/* Footer */}
-                      <div className="text-center pt-3 border-t border-gray-100 space-y-1">
-                        <p className="text-xs font-bold text-slate-700">Accepts all banks</p>
-                        <p className="text-xs text-slate-600">รับเงินได้จากทุกธนาคาร</p>
+                  <div className="mx-auto text-center space-y-4">
+                    <h3 className="text-sm font-bold text-slate-800">Scan QR Code to Pay</h3>
+                    <div className="flex justify-center">
+                      <div className="p-4 bg-white rounded-2xl border-2 border-slate-200 shadow-md">
+                        <img
+                          id="qrImage"
+                          src="/Newqrcode.jpg"
+                          alt="PromptPay QR Code"
+                          className="w-64 h-64 object-contain"
+                        />
                       </div>
                     </div>
-
-                      {/* Bottom Logo */}
-                      <div className="bg-gradient-to-r from-blue-50 to-cyan-50 px-4 py-3 flex justify-center border-t border-blue-100">
-                        <div className="flex items-center gap-1">
-                          <span className="text-xs font-bold text-blue-900">make</span>
-                          <span className="text-xs text-blue-700">by KBank</span>
-                        </div>
-                      </div>
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const link = document.createElement('a');
+                        link.href = '/Newqrcode.jpg';
+                        link.download = 'promptpay-qr-code.jpg';
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                      }}
+                      className="mx-auto block px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl text-sm transition-colors shadow-md"
+                    >
+                      ดาวน์โหลด QR Code
+                    </button>
                   </div>
 
                   {/* Evidence Uploads */}
