@@ -1903,15 +1903,18 @@ export default function HomePage() {
                       <div className="bg-gradient-to-br from-amber-50 to-yellow-50 rounded-2xl p-5 space-y-3 text-center border border-amber-100">
                         <p className="text-xs text-amber-900 font-bold uppercase tracking-wide">สแกน QR เพื่อเข้าบัญชี</p>
                         <div className="space-y-1">
-                          <p className="text-lg font-black text-slate-900">{buyTiers.find(t => t.name === selectedTier)?.price} บาท</p>
                           <p className="text-xs font-medium text-slate-700">น.ส. อารียา ภาครองหลวง</p>
                           <p className="text-xs text-slate-600 font-mono">XXX-x-x7609-x</p>
                           <p className="text-xs text-slate-500">เลขที่อ้างอิง 004666007419918</p>
                         </div>
                       </div>
 
-                      
+                      {/* Footer */}
+                      <div className="text-center pt-3 border-t border-gray-100 space-y-1">
+                        <p className="text-xs font-bold text-slate-700">Accepts all banks</p>
+                        <p className="text-xs text-slate-600">รับเงินได้จากทุกธนาคาร</p>
                       </div>
+                    </div>
 
                       {/* Bottom Logo */}
                       <div className="bg-gradient-to-r from-blue-50 to-cyan-50 px-4 py-3 flex justify-center border-t border-blue-100">
