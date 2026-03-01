@@ -979,16 +979,14 @@ export default function HomePage() {
                       <p className="text-[11px] text-slate-500 mb-2 font-medium">
                         {membershipTier === "gold" 
                           ? "✨ สิทธิ์ Gold Rank: คุณสามารถเลือกจองวันไหนก็ได้" 
-                          : "จองได้วันจันทร์และวันพุธ (วันอื่นขึ้นอยู่กับโควต้า)"}
+                          : "เลือกวันที่ต้องการจอง (เฉพาะวันที่เปิดให้บริการ)"}
                         <br />
                         <span className="text-purple-600 font-bold">* ค่าจัดส่งสำหรับการจองอาจแตกต่างจากราคาปกติ</span>
                       </p>
                       <div className="flex gap-2 overflow-x-auto pb-2 snap-x">
                         {bookingDays.map((d) => {
-                          const isMandatory = [1, 3].includes(d.dayOfWeek);
                           const isAvailable =
                             membershipTier === "gold" ||
-                            isMandatory ||
                             bookingConfigs.some((c) => c.day_of_week === d.dayOfWeek);
                           return (
                             <button
@@ -1881,29 +1879,37 @@ export default function HomePage() {
                   <div className="mx-auto text-center space-y-4">
                     <h3 className="text-sm font-bold text-slate-800">Scan QR Code to Pay</h3>
                     <div className="flex justify-center">
-                     
                         <img
                           id="qrImage"
                           src="/Newqrcode.jpg"
                           alt="PromptPay QR Code"
-                          className="w-128 h-128 object-contain"
+                          className="w-128 h-128 object-contain rounded-2xl shadow-lg border border-slate-100"
                         />
-                      
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const link = document.createElement('a');
-                        link.href = '/Newqrcode.jpg';
-                        link.download = 'promptpay-qr-code.jpg';
-                        document.body.appendChild(link);
-                        link.click();
-                        document.body.removeChild(link);
-                      }}
-                      className="mx-auto block px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl text-sm transition-colors shadow-md"
-                    >
-                      ดาวน์โหลด QR Code
-                    </button>
+                    <div className="space-y-3">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const link = document.createElement('a');
+                          link.href = '/Newqrcode.jpg';
+                          link.download = 'promptpay-qr-code.jpg';
+                          document.body.appendChild(link);
+                          link.click();
+                          document.body.removeChild(link);
+                          
+                          // Fallback for some mobile browsers
+                          setTimeout(() => {
+                            window.open('/Newqrcode.jpg', '_blank');
+                          }, 100);
+                        }}
+                        className="mx-auto block px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl text-sm transition-colors shadow-md"
+                      >
+                        ดาวน์โหลด QR Code
+                      </button>
+                      <p className="text-[10px] text-slate-400 font-medium">
+                        * หากกดปุ่มไม่ได้ ให้กดค้างที่รูปภาพเพื่อบันทึก
+                      </p>
+                    </div>
                   </div>
 
                   {/* Evidence Uploads */}
