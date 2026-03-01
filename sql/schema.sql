@@ -45,6 +45,9 @@ CREATE TABLE public.delivery_fee_schedules (
   fee_1 numeric NOT NULL CHECK (fee_1 >= 0::numeric),
   fee_2 numeric NOT NULL CHECK (fee_2 >= 0::numeric),
   extra_per_basket numeric NOT NULL CHECK (extra_per_basket >= 0::numeric),
+  booking_fee_1 numeric NOT NULL DEFAULT 50 CHECK (booking_fee_1 >= 0::numeric),
+  booking_fee_2 numeric NOT NULL DEFAULT 60 CHECK (booking_fee_2 >= 0::numeric),
+  booking_extra_per_basket numeric NOT NULL DEFAULT 10 CHECK (booking_extra_per_basket >= 0::numeric),
   active boolean NOT NULL DEFAULT true,
   CONSTRAINT delivery_fee_schedules_pkey PRIMARY KEY (id)
 );

@@ -232,10 +232,20 @@ export default function AdminDispatchPage() {
     const { value: formValues } = await Swal.fire({
       title: 'แก้ไขค่าส่ง',
       html:
-        `<div class="space-y-4">
-          <div><label class="text-xs font-bold block mb-1">Fee 1 (ใกล้)</label><input id="swal-fee1" class="swal2-input !m-0 !w-full" type="number" value="${item.fee_1}"></div>
-          <div><label class="text-xs font-bold block mb-1">Fee 2 (ไกล)</label><input id="swal-fee2" class="swal2-input !m-0 !w-full" type="number" value="${item.fee_2}"></div>
+        `<div class="space-y-4 text-left">
+          <p class="font-bold text-slate-800 text-sm border-b pb-1 mb-2">⚡ สั่งด่วน (Normal)</p>
+          <div class="grid grid-cols-2 gap-4">
+            <div><label class="text-xs font-bold block mb-1">Fee 1 (ใกล้)</label><input id="swal-fee1" class="swal2-input !m-0 !w-full" type="number" value="${item.fee_1}"></div>
+            <div><label class="text-xs font-bold block mb-1">Fee 2 (ไกล)</label><input id="swal-fee2" class="swal2-input !m-0 !w-full" type="number" value="${item.fee_2}"></div>
+          </div>
           <div><label class="text-xs font-bold block mb-1">Extra per basket</label><input id="swal-extra" class="swal2-input !m-0 !w-full" type="number" value="${item.extra_per_basket}"></div>
+          
+          <p class="font-bold text-purple-800 text-sm border-b pb-1 mb-2 mt-4">📅 จองล่วงหน้า (Booking)</p>
+          <div class="grid grid-cols-2 gap-4">
+            <div><label class="text-xs font-bold block mb-1 text-purple-700">Booking Fee 1</label><input id="swal-bfee1" class="swal2-input !m-0 !w-full border-purple-200" type="number" value="${item.booking_fee_1 || 0}"></div>
+            <div><label class="text-xs font-bold block mb-1 text-purple-700">Booking Fee 2</label><input id="swal-bfee2" class="swal2-input !m-0 !w-full border-purple-200" type="number" value="${item.booking_fee_2 || 0}"></div>
+          </div>
+          <div><label class="text-xs font-bold block mb-1 text-purple-700">Booking Extra per basket</label><input id="swal-bextra" class="swal2-input !m-0 !w-full border-purple-200" type="number" value="${item.booking_extra_per_basket || 0}"></div>
         </div>`,
       focusConfirm: false,
       showCancelButton: true,
@@ -243,7 +253,10 @@ export default function AdminDispatchPage() {
         return {
           fee_1: Number((document.getElementById('swal-fee1') as HTMLInputElement).value),
           fee_2: Number((document.getElementById('swal-fee2') as HTMLInputElement).value),
-          extra_per_basket: Number((document.getElementById('swal-extra') as HTMLInputElement).value)
+          extra_per_basket: Number((document.getElementById('swal-extra') as HTMLInputElement).value),
+          booking_fee_1: Number((document.getElementById('swal-bfee1') as HTMLInputElement).value),
+          booking_fee_2: Number((document.getElementById('swal-bfee2') as HTMLInputElement).value),
+          booking_extra_per_basket: Number((document.getElementById('swal-bextra') as HTMLInputElement).value)
         }
       }
     });
@@ -1516,7 +1529,7 @@ ${basketPhotoUrl ? `🖼️ รูปตะกร้าผ้า: ${basketPhotoU
                               </div>
                             </div>
                               <div>
-                                <div className="text-[10px] text-slate-500">ค่าส่ง</div>
+                                <div className="text-[10px] text-slate-500">ค่าส่ง {o.order_type === 'booking' && '(จอง)'}</div>
                                 <div className="text-sm font-semibold text-slate-900">
                                   {(o.delivery_fee ?? 0).toLocaleString()}฿
                                 </div>
@@ -2040,7 +2053,23 @@ ${basketPhotoUrl ? `🖼️ รูปตะกร้าผ้า: ${basketPhotoU
                        </div>
                        <div className="bg-slate-50/50 rounded-2xl p-3 border border-slate-100 text-center">
                           <p className="text-[9px] font-black text-slate-400 uppercase mb-1">เพิ่ม/ใบ</p>
-                          <p className="text-xl font-black text-emerald-600">+{df.extra_per_basket}<span className="text-[10px] font-medium opacity-30 ml-0.5">฿</span></p>
+                          <p className="text-xl font-black text-slate-900">{df.extra_per_basket}<span className="text-[10px] font-medium opacity-30 ml-0.5">฿</span></p>
+                       </div>
+                    </div>
+
+                    <p className="text-[10px] font-black text-purple-400 uppercase tracking-widest mt-4 mb-2">📅 ค่าบริการจอง (Booking)</p>
+                    <div className="grid grid-cols-3 gap-3">
+                       <div className="bg-purple-50/50 rounded-2xl p-3 border border-purple-100 text-center">
+                          <p className="text-[9px] font-black text-purple-400 uppercase mb-1">จอง 1</p>
+                          <p className="text-xl font-black text-slate-900">{df.booking_fee_1 || 0}<span className="text-[10px] font-medium opacity-30 ml-0.5">฿</span></p>
+                       </div>
+                       <div className="bg-purple-50/50 rounded-2xl p-3 border border-purple-100 text-center">
+                          <p className="text-[9px] font-black text-purple-400 uppercase mb-1">จอง 2</p>
+                          <p className="text-xl font-black text-slate-900">{df.booking_fee_2 || 0}<span className="text-[10px] font-medium opacity-30 ml-0.5">฿</span></p>
+                       </div>
+                       <div className="bg-purple-50/50 rounded-2xl p-3 border border-purple-100 text-center">
+                          <p className="text-[9px] font-black text-purple-400 uppercase mb-1">เพิ่ม/ใบ</p>
+                          <p className="text-xl font-black text-purple-600">+{df.booking_extra_per_basket || 0}<span className="text-[10px] font-medium opacity-30 ml-0.5">฿</span></p>
                        </div>
                     </div>
                   </div>

@@ -50,6 +50,9 @@ type DeliveryFeeRow = {
   fee_1: number;
   fee_2: number;
   extra_per_basket: number;
+  booking_fee_1?: number;
+  booking_fee_2?: number;
+  booking_extra_per_basket?: number;
 };
 type SupplyRow = { key: string; size: string; price: number };
 
@@ -294,17 +297,23 @@ export default function HomePage() {
     const c = baskets.length;
     let parts = new Array<number>(c).fill(0);
     if (!sch || c === 0) return parts;
-    if (c === 1) parts[0] = sch.fee_1;
+
+    const useBooking = orderType === "booking";
+    const f1 = useBooking ? (sch.booking_fee_1 ?? sch.fee_1) : sch.fee_1;
+    const f2 = useBooking ? (sch.booking_fee_2 ?? sch.fee_2) : sch.fee_2;
+    const extra = useBooking ? (sch.booking_extra_per_basket ?? sch.extra_per_basket) : sch.extra_per_basket;
+
+    if (c === 1) parts[0] = f1;
     else if (c === 2) {
-      parts[0] = sch.fee_2 / 2;
-      parts[1] = sch.fee_2 / 2;
+      parts[0] = f2 / 2;
+      parts[1] = f2 / 2;
     } else {
-      parts[0] = sch.fee_2 / 2;
-      parts[1] = sch.fee_2 / 2;
-      for (let i = 2; i < c; i++) parts[i] = sch.extra_per_basket;
+      parts[0] = f2 / 2;
+      parts[1] = f2 / 2;
+      for (let i = 2; i < c; i++) parts[i] = extra;
     }
     return parts;
-  }, [baskets.length, deliveryFees, deliveryMode]);
+  }, [baskets.length, deliveryFees, deliveryMode, orderType]);
 
   const isFreeSoftener = false;
 
@@ -971,6 +980,8 @@ export default function HomePage() {
                         {membershipTier === "gold" 
                           ? "✨ สิทธิ์ Gold Rank: คุณสามารถเลือกจองวันไหนก็ได้" 
                           : "จองได้วันจันทร์และวันพุธ (วันอื่นขึ้นอยู่กับโควต้า)"}
+                        <br />
+                        <span className="text-purple-600 font-bold">* ค่าจัดส่งสำหรับการจองอาจแตกต่างจากราคาปกติ</span>
                       </p>
                       <div className="flex gap-2 overflow-x-auto pb-2 snap-x">
                         {bookingDays.map((d) => {

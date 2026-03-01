@@ -79,7 +79,7 @@ export async function sendDiscordNotification(type: string, data: any) {
               inline: false 
             },
             { name: "🧺 รายละเอียดตะกร้า", value: basketsDetail, inline: false },
-            { name: "💵 รายละเอียดค่าใช้จ่าย", value: `• ค่าซัก: ${(data.wash_price || 0).toLocaleString("th-TH")} ฿\n• ค่าอบ: ${(data.dry_price || 0).toLocaleString("th-TH")} ฿\n• ค่าน้ำยา: ${suppliesTotal.toLocaleString("th-TH")} ฿\n• ค่าส่ง: ${deliveryFee.toLocaleString("th-TH")} ฿\n• ค่าบริการ: ${platformFee.toLocaleString("th-TH")} ฿${discountAmount > 0 ? `\n• ส่วนลด: -${discountAmount.toLocaleString("th-TH")} ฿` : ""}`, inline: false },
+            { name: "💵 รายละเอียดค่าใช้จ่าย", value: `• ค่าซัก: ${(data.wash_price || 0).toLocaleString("th-TH")} ฿\n• ค่าอบ: ${(data.dry_price || 0).toLocaleString("th-TH")} ฿\n• ค่าน้ำยา: ${suppliesTotal.toLocaleString("th-TH")} ฿\n• ค่าส่ง: ${deliveryFee.toLocaleString("th-TH")} ฿${isBooking ? " (Booking)" : ""}\n• ค่าบริการ: ${platformFee.toLocaleString("th-TH")} ฿${discountAmount > 0 ? `\n• ส่วนลด: -${discountAmount.toLocaleString("th-TH")} ฿` : ""}`, inline: false },
             { name: "✨ ยอดรวมต้องชำระ", value: `**${total.toLocaleString("th-TH")} ฿**`, inline: false },
           ],
           timestamp: new Date().toISOString(),
