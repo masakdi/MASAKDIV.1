@@ -6,10 +6,10 @@ let supabaseClientInstance: SupabaseClient | null = null
 function getSupabaseClient(): SupabaseClient {
   if (!supabaseClientInstance) {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-    const anon = process.env.NEXT_PUBLIC_SUPABASE_KEY
+    const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_KEY
 
     if (!url || !anon) {
-      throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_KEY')
+      throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY')
     }
 
     supabaseClientInstance = createClient(url, anon, {
