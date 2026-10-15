@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { supa } from "@/app/lib/supabaseClient";
 import { beddingSupplies, describeBedding, isBeddingOrder } from "@/app/lib/bedding";
+import ShopHoursEditor from "@/app/components/ShopHoursEditor";
 import {
   Clipboard, Check, X, Phone, MapPin, User, ArrowLeft,
   DollarSign, Package, RefreshCw, ChevronDown, Search,
@@ -1918,6 +1919,11 @@ ${basketPhotoUrl ? `🖼️ รูปตะกร้าผ้า: ${basketPhotoU
             <h2 className="text-2xl font-black text-slate-900 tracking-tight">ตั้งค่าบริการ</h2>
             <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Pricing & Service Configuration</p>
           </div>
+
+          {/* Shop Hours */}
+          <section className="max-w-2xl">
+            <ShopHoursEditor />
+          </section>
 
           {/* Base Prices */}
           <section className="space-y-4">
