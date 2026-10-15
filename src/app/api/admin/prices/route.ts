@@ -11,11 +11,15 @@ export async function GET(req: Request) {
   const { data: supplies, error: err2 } = await supaAdmin.from("laundry_supplies").select("*").order("key");
   const { data: platformFees, error: err3 } = await supaAdmin.from("platform_fees").select("*").eq("active", true);
 
+  // ราคาเครื่องนอน — ถ้ายังไม่ได้รัน migration ให้ส่งรายการว่าง ไม่ให้หน้าบริการพัง
+  const { data: beddingPrices, error: err4 } = await supaAdmin.from("bedding_prices").select("*").order("sort_order");
+  if (err4) console.error("bedding_prices fetch failed:", err4);
+
   if (err1 || err2 || err3) {
     return NextResponse.json({ error: err1?.message || err2?.message || err3?.message }, { status: 500 });
   }
 
-  return NextResponse.json({ basePrices, supplies, platformFees });
+  return NextResponse.json({ basePrices, supplies, platformFees, beddingPrices: beddingPrices || [] });
 }
 
 export async function PATCH(req: Request) {
@@ -30,10 +34,19 @@ export async function PATCH(req: Request) {
   if (type === "basePrice") table = "laundry_base_prices";
   else if (type === "supply") table = "laundry_supplies";
   else if (type === "platformFee") table = "platform_fees";
+  else if (type === "bedding") table = "bedding_prices";
 
   if (!table) return NextResponse.json({ error: "invalid type" }, { status: 400 });
 
-  const { error } = await supaAdmin.from(table).update(updates).eq("id", id);
+  const payload =
+    type === "bedding"
+      ? { price: Number(updates?.price), updated_at: new Date().toISOString() }
+      : updates;
+  if (type === "bedding" && (!Number.isFinite(payload.price) || payload.price < 0)) {
+    return NextResponse.json({ error: "ราคาไม่ถูกต้อง" }, { status: 400 });
+  }
+
+  const { error } = await supaAdmin.from(table).update(payload).eq("id", id);
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });

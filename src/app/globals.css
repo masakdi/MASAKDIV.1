@@ -121,3 +121,8 @@ textarea, input, select { font-size: 16px !important; } /* กัน Safari auto
 
 /* ----- Optional: glass background utility (แทนการ override bg-white/90) ----- */
 .bg-app-glass { background-color: rgba(255, 255, 255, 0.95); }
+
+/* ซ่อน global loader ถ้าเคยโหลดแล้ว (ตั้ง class จาก script ใน layout) */
+html.loader-done [data-global-loader] {
+  display: none;
+}

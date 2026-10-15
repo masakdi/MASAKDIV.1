@@ -1,3 +1,5 @@
+import { describeBedding, isBeddingOrder } from "@/app/lib/bedding";
+
 export async function sendDiscordNotification(type: string, data: any) {
   try {
     const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
@@ -13,7 +15,9 @@ export async function sendDiscordNotification(type: string, data: any) {
       case "new_order":
         // สร้างข้อมูลตะกร้าแบบละเอียด
         let basketsDetail = "-";
-        if (data.addons?.baskets && data.addons.baskets.length > 0) {
+        if (isBeddingOrder(data.addons)) {
+          basketsDetail = "🛏️ **ซักเครื่องนอน**\n" + describeBedding(data.addons.bedding).map((l) => `• ${l}`).join("\n");
+        } else if (data.addons?.baskets && data.addons.baskets.length > 0) {
           basketsDetail = data.addons.baskets
             .map((basket: any, index: number) => {
               const size = basket.size || "-";
@@ -135,6 +139,21 @@ export async function sendDiscordNotification(type: string, data: any) {
           fields: [
             { name: "👤 ชื่อลูกค้า", value: data.contact_name || "-", inline: true },
             { name: "📞 เบอร์โทร", value: data.contact_phone || "-", inline: true },
+          ],
+          timestamp: new Date().toISOString(),
+          footer: { text: "MASAKDI Admin System" },
+        };
+        break;
+
+      case "new_review":
+        embed = {
+          title: `${"⭐".repeat(data.rating)} รีวิวใหม่ (${data.rating}/5)`,
+          color: data.rating >= 4 ? 0x22C55E : data.rating === 3 ? 0xF59E0B : 0xEF4444,
+          description: `ออเดอร์ **${data.order_number || data.id.slice(0, 8)}**`,
+          fields: [
+            { name: "👤 ชื่อลูกค้า", value: data.contact_name || "-", inline: true },
+            { name: "📞 เบอร์โทร", value: data.contact_phone || "-", inline: true },
+            { name: "💬 ความคิดเห็น", value: data.comment || "-", inline: false },
           ],
           timestamp: new Date().toISOString(),
           footer: { text: "MASAKDI Admin System" },

@@ -10,6 +10,15 @@ import {
 } from "./lib/supabaseClient";
 import BottomNav from "./components/BottomNav";
 import Swal from "sweetalert2";
+import { closedMessage, getShopStatus, type ShopHours } from "./lib/shopHours";
+import BeddingForm from "./components/BeddingForm";
+import {
+  EMPTY_BEDDING,
+  describeBedding,
+  toPriceMap,
+  usedUnitPrices,
+  type BeddingOrder,
+} from "./lib/bedding";
 import {
   getUserCoupons,
   calculateDiscount,
@@ -35,35 +44,16 @@ import {
 } from "lucide-react";
 
 /* ===== Types ===== */
-type SizeKey = "S" | "M" | "L";
-type ServiceType = "wash_only" | "dry_only" | "wash_and_dry";
-type DeliveryMode = "pickup_only" | "pickup_and_return";
-
-type BasePriceRow = {
-  size: SizeKey;
-  svc: ServiceType;
-  price_ex_delivery: number;
-  breakdown?: any;
-};
-type DeliveryFeeRow = {
-  mode: DeliveryMode;
-  fee_1: number;
-  fee_2: number;
-  extra_per_basket: number;
-  booking_fee_1?: number;
-  booking_fee_2?: number;
-  booking_extra_per_basket?: number;
-};
-type SupplyRow = { key: string; size: string; price: number };
-
-type Basket = {
-  id: number;
-  size: SizeKey | "";
-  service: ServiceType | "";
-  softener: boolean;
-  detergent: boolean;
-  qty?: number;
-};
+import {
+  calculatePerSupply,
+  computePricing,
+  computeWashDry,
+  type Basket,
+  type BasePriceRow,
+  type DeliveryFeeRow,
+  type DeliveryMode,
+  type SupplyRow,
+} from "./lib/pricing";
 
 /* ===== Constants ===== */
 const BAD_WORDS = [/ควย/i, /เหี้ย/i, /สัส/i, /fuck/i, /shit/i];
@@ -121,86 +111,6 @@ const requestCamera = async (): Promise<boolean> => {
   }
 };
 
-const calculateSupplyCharge = (
-  size: SizeKey | "",
-  softener: boolean,
-  detergent: boolean,
-  supplies: SupplyRow[] | null
-): number => {
-  if (!size || (!softener && !detergent) || !supplies) return 0;
-  
-  const softPrice = softener ? (supplies.find(s => s.key === 'softener' && s.size === size)?.price || (size === 'S' ? 10 : 15)) : 0;
-  const detPrice = detergent ? (supplies.find(s => s.key === 'detergent' && s.size === size)?.price || (size === 'S' ? 10 : 15)) : 0;
-  
-  return Number(softPrice) + Number(detPrice);
-};
-
-const calculatePerSupply = (size: SizeKey | "", picked: boolean, key: 'softener' | 'detergent', supplies: SupplyRow[] | null): number => {
-  if (!picked || !size || !supplies) return 0;
-  const match = supplies.find(s => s.key === key && s.size === size);
-  return match ? Number(match.price) : (size === "S" ? 10 : 15);
-};
-
-const getBasePriceFor = (
-  size: SizeKey | "",
-  service: ServiceType | "",
-  basePrices: BasePriceRow[] | null,
-  platformFee: number = 20,
-): number => {
-  if (!size || !service || !basePrices) return 0;
-  
-  if (service === "wash_and_dry") {
-    const washRow = basePrices.find(p => p.size === size && p.svc === "wash_only");
-    const dryRow = basePrices.find(p => p.size === size && p.svc === "dry_only");
-    if (!washRow && !dryRow) return 0;
-    const combinedTotal = (washRow?.price_ex_delivery || 0) + (dryRow?.price_ex_delivery || 0);
-    return Math.max(0, combinedTotal - platformFee);
-  }
-
-  const direct = basePrices.find((p) => p.size === size && p.svc === service);
-  if (direct) return Math.max(0, direct.price_ex_delivery - platformFee);
-  
-  return 0;
-};
-
-const computeWashDry = (
-  basket: Basket,
-  basePrices: BasePriceRow[] | null,
-  platformFee: number = 20,
-) => {
-  if (!basePrices || !basket.size || !basket.service)
-    return { wash: 0, dry: 0, base: 0 };
-
-  if (basket.service === "wash_and_dry") {
-    const washRow = basePrices.find(p => p.size === basket.size && p.svc === "wash_only");
-    const dryRow = basePrices.find(p => p.size === basket.size && p.svc === "dry_only");
-    
-    const wPart = washRow?.price_ex_delivery || 0;
-    const dPart = dryRow?.price_ex_delivery || 0;
-    
-    return { 
-      wash: wPart, 
-      dry: dPart, 
-      base: wPart + dPart 
-    };
-  }
-
-  const row = basePrices.find(
-    (p) => p.size === basket.size && p.svc === basket.service,
-  );
-  if (row) {
-    const fullPrice = row.price_ex_delivery;
-    if (basket.service === "wash_only")
-      return { wash: fullPrice, dry: 0, base: fullPrice };
-    if (basket.service === "dry_only")
-      return { wash: 0, dry: fullPrice, base: fullPrice };
-    
-    return { wash: fullPrice / 2, dry: fullPrice / 2, base: fullPrice };
-  }
-  
-  return { wash: 0, dry: 0, base: 0 };
-};
-
 export default function HomePage() {
   const slipCamRef = useRef<HTMLInputElement | null>(null);
   const basketCamRef = useRef<HTMLInputElement | null>(null);
@@ -225,6 +135,10 @@ export default function HomePage() {
   const [deliveryMode, setDeliveryMode] =
     useState<DeliveryMode>("pickup_and_return");
   const [baskets, setBaskets] = useState<Basket[]>([]);
+  // ซักผ้าปกติ หรือ ซักเครื่องนอน (แยกออเดอร์กัน)
+  const [serviceCategory, setServiceCategory] = useState<"laundry" | "bedding">("laundry");
+  const [bedding, setBedding] = useState<BeddingOrder>(EMPTY_BEDDING);
+  const [beddingPrices, setBeddingPrices] = useState<Record<string, number> | null>(null);
   const [note, setNote] = useState("");
   const [consent, setConsent] = useState(false);
   const [orderType, setOrderType] = useState<"normal" | "booking">("normal");
@@ -260,6 +174,8 @@ export default function HomePage() {
   const [userTier, setUserTier] = useState<string>("verified_user");
 
   const [busy, setBusy] = useState(false);
+  const [shopHours, setShopHours] = useState<ShopHours | null>(null);
+  const [clock, setClock] = useState(() => Date.now());
   const [showTerms, setShowTerms] = useState(false);
   const [showPrivacy, setShowPrivacy] = useState(false);
   const [hideHeader, setHideHeader] = useState(false);
@@ -272,14 +188,16 @@ export default function HomePage() {
 
   const bookingDays = useMemo(() => {
     if (!mounted) return [];
+    // นับวันตามเวลาไทยเสมอ (เดิมใช้ toISOString ซึ่งเป็น UTC ทำให้ช่วง 00:00-07:00 วันแรกกลายเป็นวันนี้)
+    const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok" }).format(new Date());
+    const base = Date.UTC(+today.slice(0, 4), +today.slice(5, 7) - 1, +today.slice(8, 10));
     return Array.from({ length: 14 }).map((_, i) => {
-      const d = new Date();
-      d.setDate(d.getDate() + i + 1);
+      const d = new Date(base + (i + 1) * 86_400_000);
       return {
         iso: d.toISOString().split("T")[0],
-        dayName: d.toLocaleDateString("th-TH", { weekday: "short" }),
-        dayNum: d.getDate(),
-        dayOfWeek: d.getDay(),
+        dayName: d.toLocaleDateString("th-TH", { weekday: "short", timeZone: "UTC" }),
+        dayNum: d.getUTCDate(),
+        dayOfWeek: d.getUTCDay(),
       };
     });
   }, [mounted]);
@@ -288,171 +206,75 @@ export default function HomePage() {
     address.trim() &&
     (orderType === "normal" || scheduledDate)
   );
-  const canGoToStep3 = baskets.length > 0;
-  const canSubmit = baskets.length > 0 && !!slip && !!basketPhoto;
+  const isBedding = serviceCategory === "bedding";
+  // จำนวน "ตะกร้า" สำหรับคิดค่าส่ง: เครื่องนอนนับ 1 รายการ = 1 ตะกร้า
+  const itemCount = isBedding ? bedding.lines.length : baskets.length;
+  const canGoToStep3 = itemCount > 0;
+  // ยังโหลดเวลาไม่เสร็จ = ถือว่าเปิด (server ตรวจซ้ำตอนสั่งอยู่แล้ว)
+  const shopStatus = useMemo(
+    () => (shopHours ? getShopStatus(shopHours, new Date(clock)) : null),
+    [shopHours, clock],
+  );
+  // นอกเวลาปิดเฉพาะสั่งด่วน จองล่วงหน้าสั่งได้ตลอด
+  const shopOpen = orderType === "booking" || (shopStatus?.isOpen ?? true);
+  const canSubmit = itemCount > 0 && !!slip && !!basketPhoto && shopOpen;
 
-  const deliveryBreakdown = useMemo(() => {
-    const dfs = deliveryFees || [];
-    const sch = dfs.find((d) => d.mode === deliveryMode);
-    const c = baskets.length;
-    let parts = new Array<number>(c).fill(0);
-    if (!sch || c === 0) return parts;
-
-    const useBooking = orderType === "booking";
-    const f1 = useBooking ? (sch.booking_fee_1 ?? sch.fee_1) : sch.fee_1;
-    const f2 = useBooking ? (sch.booking_fee_2 ?? sch.fee_2) : sch.fee_2;
-    const extra = useBooking ? (sch.booking_extra_per_basket ?? sch.extra_per_basket) : sch.extra_per_basket;
-
-    if (c === 1) parts[0] = f1;
-    else if (c === 2) {
-      parts[0] = f2 / 2;
-      parts[1] = f2 / 2;
-    } else {
-      parts[0] = f2 / 2;
-      parts[1] = f2 / 2;
-      for (let i = 2; i < c; i++) parts[i] = extra;
-    }
-    return parts;
-  }, [baskets.length, deliveryFees, deliveryMode, orderType]);
+  // อัปเดตสถานะเปิด-ปิดทุก 30 วินาที กรณีเปิดหน้าค้างไว้จนเลยเวลา
+  useEffect(() => {
+    const t = setInterval(() => setClock(Date.now()), 30_000);
+    return () => clearInterval(t);
+  }, []);
 
   const isFreeSoftener = false;
 
-  const {
-    basePrice,
-    suppliesTotal,
-    deliveryFee,
-    totalPlatformFee,
-    grandTotal,
-    step3Summary,
-  } = useMemo(() => {
-    if (!basePrices || !deliveryFees)
-      return {
-        basePrice: 0,
-        suppliesTotal: 0,
-        deliveryFee: 0,
-        totalPlatformFee: 0,
-        grandTotal: 0,
-        step3Summary: null,
-      };
-    const bp = baskets.reduce(
-      (s, b) => {
-        let price = 0;
-        if (b.service === "wash_and_dry") {
-          const w = basePrices.find(p => p.size === b.size && p.svc === "wash_only")?.price_ex_delivery || 0;
-          const d = basePrices.find(p => p.size === b.size && p.svc === "dry_only")?.price_ex_delivery || 0;
-          price = w + d;
-        } else {
-          price = basePrices.find(p => p.size === b.size && p.svc === b.service)?.price_ex_delivery || 0;
-        }
-        return s + price * (b.qty || 1);
-      },
-      0,
-    );
-    const st = baskets.reduce(
-      (s, b) =>
-        s +
-        calculateSupplyCharge(b.size, isFreeSoftener ? false : b.softener, b.detergent, supplies) * (b.qty || 1),
-      0,
-    );
-    const effectivePlatformFee = platformFee;
-    const pf = baskets.reduce(
-      (s, b) => s + (b.size && b.service ? effectivePlatformFee * (b.qty || 1) : 0),
-      0,
-    );
-
-    let df = deliveryBreakdown.reduce((s, f) => s + f, 0);
-    // Subtotal Discount calculation (Services + Supplies + Delivery) 
-    const discountableSubtotal = bp + st + df;
-
-    let mDisc = 0, mLabel = "";
-    if (membershipTier !== "verified_user") {
-      const percent = membershipTier === "gold" ? 0.20 : 0.15;
-      mDisc = Math.round(discountableSubtotal * percent);
-      mLabel = `ส่วนลดสมาชิก ${Math.round(percent * 100)}%`;
-
-      if (freeDeliveryCount > 0) {
-        mDisc = Math.round((bp + st) * percent) + df;
-        mLabel += " + ฟรีค่าส่ง";
-      }
-    }
-    let cDisc = 0, cLabel = "";
-    if (selectedCoupon) {
-      const isExpired = selectedCoupon.end_date && new Date(selectedCoupon.end_date) < new Date();
-      if (!isExpired) {
-        if (selectedCoupon.discount_type === "fixed")
-          cDisc = selectedCoupon.discount_value;
-        else {
-          cDisc = Math.round((discountableSubtotal * selectedCoupon.discount_value) / 100);
-          if (selectedCoupon.max_discount_amount)
-            cDisc = Math.min(cDisc, selectedCoupon.max_discount_amount);
-        }
-
-        // Cap discount to never exceed the total amount payable
-        // discountableSubtotal + pf is the total cost. mDisc is already applied.
-        const maxDiscount = Math.max(0, discountableSubtotal + pf - mDisc);
-        if (cDisc > maxDiscount) {
-          cDisc = maxDiscount;
-        }
-
-        cLabel = `คูปอง ${selectedCoupon.code}`;
-      }
-    }
-    const disc = mDisc + cDisc;
-    // Grand Total = Discountable items - Discount + Platform Fee
-    const gt = Math.max(0, discountableSubtotal - disc + pf);
-    
-    const summary = {
-      wash: baskets.reduce(
-        (s, b) => s + computeWashDry(b, basePrices, platformFee).wash * (b.qty || 1),
-        0,
-      ),
-      dry: baskets.reduce(
-        (s, b) => s + computeWashDry(b, basePrices, platformFee).dry * (b.qty || 1),
-        0,
-      ),
-      supplies: st,
-      softener: baskets.reduce(
-        (s, b) => s + calculatePerSupply(b.size, isFreeSoftener ? false : b.softener, 'softener', supplies) * (b.qty || 1),
-        0,
-      ),
-      detergent: baskets.reduce(
-        (s, b) => s + calculatePerSupply(b.size, b.detergent, 'detergent', supplies) * (b.qty || 1),
-        0,
-      ),
-      deliveryBeforeDiscount: df,
-      discount: disc,
-      discountLabel: [mLabel, cLabel].filter(Boolean).join(" + "),
-      platformFee: pf,
-      grandTotal: gt,
-    };
-    return {
-      basePrice: bp,
-      suppliesTotal: st,
-      deliveryFee: df,
-      totalPlatformFee: pf,
-      grandTotal: gt,
-      step3Summary: summary,
-    };
+  // สูตรเดียวกับที่ /api/orders ใช้ตรวจราคาซ้ำ (lib/pricing.ts)
+  const pricing = useMemo(() => {
+    if (!basePrices || !deliveryFees) return null;
+    return computePricing({
+      isBedding,
+      baskets,
+      bedding,
+      orderType,
+      deliveryMode,
+      basePrices,
+      deliveryFees,
+      supplies,
+      platformFee,
+      beddingPrices,
+      membershipTier,
+      freeDeliveryCount,
+      coupon: selectedCoupon,
+    });
   }, [
+    isBedding,
     baskets,
+    bedding,
+    orderType,
+    deliveryMode,
     basePrices,
     deliveryFees,
-    deliveryBreakdown,
-    membershipTier,
-    completedOrdersCount,
-    hasUsedFreeDelivery,
-    freeDeliveryCount,
-    platformFee,
-    selectedCoupon,
     supplies,
+    platformFee,
+    beddingPrices,
+    membershipTier,
+    freeDeliveryCount,
+    selectedCoupon,
   ]);
+
+  const deliveryBreakdown = useMemo(() => pricing?.deliveryBreakdown ?? [], [pricing]);
+  const basePrice = pricing?.basePrice ?? 0;
+  const suppliesTotal = pricing?.suppliesTotal ?? 0;
+  const deliveryFee = pricing?.deliveryFee ?? 0;
+  const totalPlatformFee = pricing?.totalPlatformFee ?? 0;
+  const grandTotal = pricing?.grandTotal ?? 0;
+  const step3Summary = pricing?.summary ?? null;
 
   const orderTotal = basePrice + suppliesTotal + totalPlatformFee + deliveryFee;
 
   const basketSummaries = useMemo(() => {
     return baskets.map((b, idx) => {
       const q = b.qty || 1,
-        { wash, dry } = computeWashDry(b, basePrices, platformFee);
+        { wash, dry } = computeWashDry(b, basePrices);
       const soft = calculatePerSupply(b.size, isFreeSoftener ? false : b.softener, 'softener', supplies),
         det = calculatePerSupply(b.size, b.detergent, 'detergent', supplies);
       const delivery = deliveryBreakdown[idx] || 0;
@@ -544,10 +366,14 @@ export default function HomePage() {
             if (d.address) setAddress(d.address);
             if (d.deliveryMode) setDeliveryMode(d.deliveryMode);
             if (d.baskets) setBaskets(d.baskets);
+            if (d.serviceCategory) setServiceCategory(d.serviceCategory);
+            if (d.bedding) setBedding({ ...EMPTY_BEDDING, ...d.bedding });
             if (d.note) setNote(d.note);
             if (d.consent) setConsent(d.consent);
             if (d.orderType) setOrderType(d.orderType);
-            if (d.scheduledDate) setScheduledDate(d.scheduledDate);
+            // ไม่คืนค่าวันจองที่ผ่านไปแล้ว (server จะไม่รับ)
+            const todayTH = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok" }).format(new Date());
+            if (d.scheduledDate && d.scheduledDate > todayTH) setScheduledDate(d.scheduledDate);
             if (d.googleMapLink) setGoogleMapLink(d.googleMapLink);
           } catch (e) {
             console.error("Restore draft error", e);
@@ -580,6 +406,15 @@ export default function HomePage() {
 
         // Load pricing configurations (Base Prices, Delivery, Supplies, Platform Fee)
         promises.push(reloadPricing());
+
+        promises.push(
+          fetch("/api/shop-hours", { cache: "no-store" })
+            .then((r) => r.json())
+            .then((d) => {
+              if (d.hours) setShopHours(d.hours);
+            })
+            .catch((e) => console.error("Load shop hours error", e))
+        );
 
         promises.push(
           supa
@@ -617,6 +452,8 @@ export default function HomePage() {
         orderType,
         scheduledDate,
         googleMapLink,
+        serviceCategory,
+        bedding,
       };
       localStorage.setItem("order_draft", JSON.stringify(draft));
     }, 1000);
@@ -634,11 +471,13 @@ export default function HomePage() {
     orderType,
     scheduledDate,
     googleMapLink,
+    serviceCategory,
+    bedding,
   ]);
 
   const reloadPricing = async () => {
     try {
-      const [bp, df, sp, pf] = await Promise.allSettled([
+      const [bp, df, sp, pf, bd] = await Promise.allSettled([
         supa
           .from("laundry_base_prices")
           .select("size, svc, price_ex_delivery")
@@ -646,7 +485,11 @@ export default function HomePage() {
         supa.from("delivery_fee_schedules").select("*").eq("active", true),
         supa.from("laundry_supplies").select("key, size, price").eq("active", true),
         supa.from("platform_fees").select("amount").eq("fee_type", "standard").single(),
+        supa.from("bedding_prices").select("key, price").eq("active", true),
       ]);
+      if (bd.status === "fulfilled" && !bd.value.error && bd.value.data)
+        setBeddingPrices(toPriceMap(bd.value.data));
+      else setBeddingPrices({});
       if (bp.status === "fulfilled" && !bp.value.error)
         setBasePrices(bp.value.data);
       if (df.status === "fulfilled" && !df.value.error)
@@ -713,6 +556,13 @@ export default function HomePage() {
   };
 
   const validateStep2 = () => {
+    if (isBedding) {
+      if (bedding.lines.length === 0) {
+        Swal.fire("แจ้งเตือน", "⚠️ กรุณาเพิ่มชุดเครื่องนอนอย่างน้อย 1 รายการ", "warning");
+        return false;
+      }
+      return true;
+    }
     if (baskets.length === 0) {
       Swal.fire("แจ้งเตือน", "⚠️ กรุณาเพิ่มอย่างน้อย 1 ตะกร้า", "warning");
       return false;
@@ -751,6 +601,17 @@ export default function HomePage() {
     if (!canSubmit) return;
     setBusy(true);
     try {
+      // เช็คเวลาเปิด-ปิดกับเซิร์ฟเวอร์ก่อนอัปโหลดรูป
+      const hoursRes = await fetch("/api/shop-hours", { cache: "no-store" });
+      if (hoursRes.ok) {
+        const h = await hoursRes.json();
+        if (h.hours) setShopHours(h.hours);
+        if (orderType !== "booking" && h.status && !h.status.isOpen) {
+          await Swal.fire("ปิดรับออเดอร์", closedMessage(h.status), "warning");
+          return;
+        }
+      }
+
       const [slipUrl, basketUrl] = await Promise.all([
         uploadToBucket(BUCKET_SLIPS, slip!),
         uploadToBucket(BUCKET_BASKETS, basketPhoto!),
@@ -770,6 +631,7 @@ export default function HomePage() {
         platform_fee: totalPlatformFee,
         discount_amount: totals.discount,
         discount_reason: totals.discountLabel || null,
+        coupon_code: selectedCoupon?.code ?? null,
         subtotal_before_discount:
           basePrice + suppliesTotal + deliveryFee + totalPlatformFee,
         total_amount: grandTotal,
@@ -780,7 +642,14 @@ export default function HomePage() {
           mode: deliveryMode,
           google_map_link: googleMapLink.trim() || null
         },
-        addons: { baskets, basket_photo_url: basketUrl },
+        addons: isBedding
+          ? {
+              service: "bedding",
+              bedding: { ...bedding, unit_prices: usedUnitPrices(bedding, beddingPrices || {}) },
+              baskets: [],
+              basket_photo_url: basketUrl,
+            }
+          : { baskets, basket_photo_url: basketUrl },
         order_type: orderType,
         scheduled_date: orderType === "booking" ? scheduledDate : null,
       };
@@ -789,8 +658,8 @@ export default function HomePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      if (!res.ok) throw new Error("บันทึกไม่สำเร็จ");
-      const orderData = await res.json();
+      const orderData = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(orderData.message || "บันทึกไม่สำเร็จ");
       if (selectedCoupon && uid)
         await markCouponUsed(
           uid,
@@ -870,6 +739,32 @@ export default function HomePage() {
         </header>
 
         <main className="flex-1 px-5 py-6 pb-40">
+          {/* แสดงเฉพาะตอนสั่งด่วน — จองล่วงหน้าสั่งได้ตลอดจึงไม่ต้องเตือน */}
+          {shopStatus && !shopStatus.isOpen && orderType !== "booking" && (
+            <div className="mb-5 rounded-2xl border border-blue-100 bg-blue-50/70 px-4 py-3">
+              <p className="flex items-center gap-1.5 text-sm font-bold text-[color:var(--tint)]">
+                <CalendarClock className="h-4 w-4" />
+                ขณะนี้ปิดรับออเดอร์สั่งด่วน
+              </p>
+              <p className="mt-0.5 text-xs text-slate-600">
+                เปิดรับออเดอร์เวลา {shopStatus.openLabel} - {shopStatus.lastOrderLabel} น.
+                (ร้านปิด {shopStatus.closeLabel} น.)
+              </p>
+              <p className="mt-2 text-xs font-semibold text-slate-700">
+                ระบบจองล่วงหน้ายังจองได้ตามปกติ
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setOrderType("booking");
+                  setCurrentStep(1);
+                }}
+                className="mt-2 h-9 rounded-xl bg-[color:var(--tint)] px-4 text-xs font-bold text-white shadow-sm active:scale-95"
+              >
+                เปลี่ยนเป็นจองล่วงหน้า
+              </button>
+            </div>
+          )}
           {currentStep === 1 && (
             <form
               onSubmit={(e) => {
@@ -1124,7 +1019,38 @@ export default function HomePage() {
 
           {currentStep === 2 && (
             <div className="space-y-5 animate-in fade-in slide-in-from-right-4">
-              {baskets.length === 0 && (
+              <div className="grid grid-cols-2 gap-2 rounded-2xl bg-slate-100 p-1">
+                {(
+                  [
+                    ["laundry", "👕 ซักผ้า"],
+                    ["bedding", "🛏️ ซักเครื่องนอน"],
+                  ] as const
+                ).map(([k, label]) => (
+                  <button
+                    key={k}
+                    type="button"
+                    onClick={() => setServiceCategory(k)}
+                    className={`h-10 rounded-xl text-sm font-bold transition-all ${
+                      serviceCategory === k
+                        ? "bg-white text-[color:var(--tint)] shadow-sm"
+                        : "text-slate-500"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {isBedding && (
+                <p className="-mt-2 text-[11px] text-slate-500">
+                  ออเดอร์เครื่องนอนแยกจากออเดอร์ซักผ้า หากต้องการซักผ้าด้วยกรุณาสั่งแยกอีกออเดอร์
+                </p>
+              )}
+
+              {isBedding && (
+                <BeddingForm value={bedding} onChange={setBedding} prices={beddingPrices} />
+              )}
+
+              {!isBedding && baskets.length === 0 && (
                 <div className="py-8 flex justify-center">
                   <button
                     type="button"
@@ -1137,7 +1063,7 @@ export default function HomePage() {
               )}
 
               <div className="space-y-4">
-                {baskets.map((b, idx) => (
+                {!isBedding && baskets.map((b, idx) => (
                   <section
                     key={b.id}
                     className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
@@ -1268,7 +1194,7 @@ export default function HomePage() {
                 ))}
               </div>
 
-              {baskets.length > 0 && (
+              {!isBedding && baskets.length > 0 && (
                 <div className="mt-1 flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3">
                   <div className="flex items-center gap-2">
                     <button
@@ -1290,7 +1216,7 @@ export default function HomePage() {
                 </div>
               )}
 
-              {baskets.length > 0 && (
+              {itemCount > 0 && (
                 <div className="pt-2 border-t border-slate-100/60">
                   <div className="space-y-3 pt-2">
                     <p className="text-sm font-bold text-slate-700 tracking-tight">
@@ -1308,7 +1234,7 @@ export default function HomePage() {
                 </div>
               )}
 
-              {baskets.length > 0 && (
+              {itemCount > 0 && (
                 <div
                   className="fixed left-0 right-0 bg-gradient-to-t from-white via-white/80 to-transparent px-4 pt-10 pb-4 z-40"
                   style={{
@@ -1358,13 +1284,9 @@ export default function HomePage() {
                 (totals.supplies || 0) +
                 (totals.deliveryBeforeDiscount || 0);
 
-              const detailed = baskets.map((b, idx) => {
+              const detailed = (isBedding ? [] : baskets).map((b, idx) => {
                 const q = b.qty || 1;
-                const { wash, dry } = computeWashDry(
-                  b,
-                  basePrices,
-                  platformFee,
-                );
+                const { wash, dry } = computeWashDry(b, basePrices);
                 const soft = calculatePerSupply(b.size, b.softener, 'softener', supplies);
                 const det = calculatePerSupply(b.size, b.detergent, 'detergent', supplies);
                 const suppliesCostLine = soft + det;
@@ -1467,17 +1389,21 @@ export default function HomePage() {
                       <div className="py-6 space-y-4">
                         <div className="space-y-2">
                           <div className="flex justify-between text-sm">
-                            <span className="text-zinc-500">ค่าซักรวม</span>
+                            <span className="text-zinc-500">
+                              {isBedding ? "ค่าซักเครื่องนอน" : "ค่าซักรวม"}
+                            </span>
                             <span className="font-bold">
                               {money(totals.wash)}
                             </span>
                           </div>
-                          <div className="flex justify-between text-sm">
-                            <span className="text-zinc-500">ค่าอบรวม</span>
-                            <span className="font-bold">
-                              {money(totals.dry)}
-                            </span>
-                          </div>
+                          {!isBedding && (
+                            <div className="flex justify-between text-sm">
+                              <span className="text-zinc-500">ค่าอบรวม</span>
+                              <span className="font-bold">
+                                {money(totals.dry)}
+                              </span>
+                            </div>
+                          )}
                           {totals.supplies > 0 && (
                             <div className="space-y-1">
                               <div className="flex justify-between text-sm">
@@ -1511,7 +1437,7 @@ export default function HomePage() {
                           <div className="flex justify-between text-sm pt-2 mt-2 border-t border-zinc-100">
                             <span className="text-zinc-500 flex items-center gap-1.5 font-medium">
                               <Truck className="w-4 h-4" /> ค่าส่ง (
-                              {baskets.length} ตะกร้า)
+                              {itemCount} {isBedding ? "รายการ" : "ตะกร้า"})
                             </span>
                             <span className="font-bold">
                               {money(totals.deliveryBeforeDiscount)}
@@ -1765,8 +1691,24 @@ export default function HomePage() {
                     )}
                   </div>
 
+                  {isBedding && (
+                    <div className="space-y-4">
+                      <h3 className="text-sm font-bold text-zinc-800 uppercase tracking-wider px-1">
+                        รายการเครื่องนอน
+                      </h3>
+                      <ul className="rounded-2xl bg-white border border-zinc-100 shadow-sm px-5 py-4 space-y-1.5 text-[13px] text-zinc-600">
+                        {describeBedding({
+                          ...bedding,
+                          unit_prices: usedUnitPrices(bedding, beddingPrices || {}),
+                        }).map((line) => (
+                          <li key={line}>• {line}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
                   {/* Basket Details (Accordions) */}
-                  <div className="space-y-4">
+                  <div className={`space-y-4 ${isBedding ? "hidden" : ""}`}>
                     <h3 className="text-sm font-bold text-zinc-800 uppercase tracking-wider px-1">
                       รายละเอียดแต่ละตะกร้า
                     </h3>

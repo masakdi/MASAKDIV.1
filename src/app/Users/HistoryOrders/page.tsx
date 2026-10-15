@@ -1,7 +1,9 @@
 "use client";
 import { useEffect, useLayoutEffect, useState } from "react";
 import liff from "@line/liff";
+import { Star } from "lucide-react";
 import { supa } from "@/app/lib/supabaseClient";
+import { describeBedding, isBeddingOrder } from "@/app/lib/bedding";
 // ถ้าต้องการ toast แนะนำติดตั้ง react-hot-toast (ไม่บังคับ)
 // import { toast } from "react-hot-toast";
 
@@ -27,8 +29,15 @@ type OrderItem = {
   supplies_total?: number | null;
   delivery_fee?: number | null;
   delivery?: { breakdown?: number[] } | any;
-  addons?: { baskets?: Basket[] } | null;
+  addons?: { baskets?: Basket[]; service?: string; bedding?: any } | null;
   note?: string | null;
+  review?: Review | null;
+};
+
+type Review = {
+  rating: number;
+  comment?: string | null;
+  created_at?: string;
 };
 
 type BasePriceRow = {
@@ -101,6 +110,36 @@ const getDeliveryShare = (order: OrderItem, idx: number, count: number) => {
   return count <= 0 || fee <= 0 ? 0 : fee / count;
 };
 
+const RATING_TEXT = ["", "แย่มาก", "ไม่ค่อยดี", "พอใช้", "ดี", "ดีมาก"];
+
+const Stars = ({
+  value,
+  onPick,
+  size = 28,
+}: {
+  value: number;
+  onPick?: (n: number) => void;
+  size?: number;
+}) => (
+  <div className="flex items-center gap-1">
+    {[1, 2, 3, 4, 5].map((n) => (
+      <button
+        key={n}
+        type="button"
+        disabled={!onPick}
+        onClick={() => onPick?.(n)}
+        aria-label={`${n} ดาว`}
+        className={onPick ? "active:scale-90 transition" : "cursor-default"}
+      >
+        <Star
+          size={size}
+          className={n <= value ? "fill-amber-400 text-amber-400" : "text-slate-300"}
+        />
+      </button>
+    ))}
+  </div>
+);
+
 /* ===== Component ===== */
 export default function HistoryOrders() {
   const [orders, setOrders] = useState<OrderItem[]>([]);
@@ -110,6 +149,10 @@ export default function HistoryOrders() {
   const [basePrices, setBasePrices] = useState<BasePriceRow[] | null>(null);
   const [openRows, setOpenRows] = useState<Record<string, boolean>>({});
   const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const [reviewDrafts, setReviewDrafts] = useState<
+    Record<string, { rating: number; comment: string }>
+  >({});
+  const [reviewingId, setReviewingId] = useState<string | null>(null);
 
   const toggleRow = (id: string) =>
     setOpenRows((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -185,6 +228,44 @@ export default function HistoryOrders() {
     }
   };
 
+  /* ===== Submit review (ดาว + คอมเมนต์) ===== */
+  const updateDraft = (orderId: string, patch: Partial<{ rating: number; comment: string }>) =>
+    setReviewDrafts((prev) => ({
+      ...prev,
+      [orderId]: { ...(prev[orderId] ?? { rating: 0, comment: "" }), ...patch },
+    }));
+
+  const submitReview = async (orderId: string) => {
+    const draft = reviewDrafts[orderId];
+    if (!userId || !draft?.rating) return;
+
+    try {
+      setReviewingId(orderId);
+      const res = await fetch("/api/orders/review", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: userId,
+          order_id: orderId,
+          rating: draft.rating,
+          comment: draft.comment,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Request failed");
+
+      setOrders((prev) =>
+        prev.map((o) => (o.id === orderId ? { ...o, review: data.review } : o))
+      );
+      alert("ขอบคุณสำหรับรีวิว 🙏");
+    } catch (err: any) {
+      console.error("submitReview error:", err);
+      alert(err.message || "ส่งรีวิวไม่สำเร็จ กรุณาลองใหม่ภายหลัง");
+    } finally {
+      setReviewingId(null);
+    }
+  };
+
   /* ===== Init LIFF & Load Orders ===== */
   useEffect(() => {
     async function init() {
@@ -251,7 +332,8 @@ export default function HistoryOrders() {
           setOrders((prev) => {
             const exists = prev.find((o) => o.id === newOrder.id);
             if (exists) {
-              return prev.map((o) => (o.id === newOrder.id ? newOrder : o));
+              // merge เพื่อไม่ให้ข้อมูลรีวิวหายเมื่อสถานะออเดอร์เปลี่ยน
+              return prev.map((o) => (o.id === newOrder.id ? { ...o, ...newOrder } : o));
             }
             return [newOrder, ...prev];
           });
@@ -365,8 +447,82 @@ export default function HistoryOrders() {
                     </div>
                   </div>
 
+                  {o.status === "completed" && (
+                    <div className="mt-3 rounded-xl border border-amber-100 bg-amber-50/50 p-3">
+                      {o.review ? (
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs text-slate-500">รีวิวของคุณ</span>
+                            <Stars value={o.review.rating} size={18} />
+                          </div>
+                          {o.review.comment && (
+                            <p className="text-sm text-slate-700 whitespace-pre-line">
+                              {o.review.comment}
+                            </p>
+                          )}
+                        </div>
+                      ) : (
+                        (() => {
+                          const draft = reviewDrafts[o.id] ?? { rating: 0, comment: "" };
+                          return (
+                            <div className="space-y-2">
+                              <p className="text-sm font-medium text-slate-700">
+                                ให้คะแนนบริการครั้งนี้
+                              </p>
+                              <div className="flex items-center gap-3">
+                                <Stars
+                                  value={draft.rating}
+                                  onPick={(n) => updateDraft(o.id, { rating: n })}
+                                />
+                                {draft.rating > 0 && (
+                                  <span className="text-xs text-amber-700">
+                                    {RATING_TEXT[draft.rating]}
+                                  </span>
+                                )}
+                              </div>
+                              {draft.rating > 0 && (
+                                <>
+                                  <textarea
+                                    value={draft.comment}
+                                    onChange={(e) => updateDraft(o.id, { comment: e.target.value })}
+                                    maxLength={500}
+                                    rows={3}
+                                    placeholder="เขียนความคิดเห็นเพิ่มเติม (ไม่บังคับ)"
+                                    className="w-full rounded-xl bg-white px-3 py-2 text-sm ring-1 ring-slate-200 focus:outline-none focus:ring-amber-300"
+                                  />
+                                  <button
+                                    onClick={() => submitReview(o.id)}
+                                    disabled={reviewingId === o.id}
+                                    className="w-full h-10 rounded-xl bg-amber-500 text-white text-sm font-medium disabled:bg-amber-300 hover:bg-amber-600 transition"
+                                  >
+                                    {reviewingId === o.id ? "กำลังส่ง..." : "ส่งรีวิว"}
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          );
+                        })()
+                      )}
+                    </div>
+                  )}
+
                   {isOpen && (
                     <div className="mt-3 space-y-3">
+                      {isBeddingOrder(o.addons) ? (
+                        <div className="rounded-xl bg-slate-50 p-3 text-sm space-y-2 border border-slate-100">
+                          <div className="font-medium">🛏️ ซักเครื่องนอน</div>
+                          <ul className="pl-3 text-xs text-slate-600 space-y-0.5">
+                            {describeBedding((o.addons as any).bedding).map((line) => (
+                              <li key={line}>• {line}</li>
+                            ))}
+                          </ul>
+                          <div className="border-t pt-2 pl-3 text-xs text-slate-600">
+                            <div>ค่าซักเครื่องนอน: {formatBaht(o.base_price)}</div>
+                            <div>ค่าน้ำยา: {formatBaht(o.supplies_total)}</div>
+                            <div>ค่าส่ง: {formatBaht(o.delivery_fee)}</div>
+                          </div>
+                        </div>
+                      ) : (
                       <div className="rounded-xl bg-slate-50 p-3 text-sm space-y-2 border border-slate-100">
                         {detailed.map((r, i) => (
                           <div key={i} className="border-b pb-2">
@@ -383,6 +539,7 @@ export default function HistoryOrders() {
                           </div>
                         ))}
                       </div>
+                      )}
 
                       {(o.status === "pending" || o.status === "accepted") && (
                         <button

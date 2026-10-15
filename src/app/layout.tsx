@@ -26,6 +26,14 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="th" className="h-full" suppressHydrationWarning>
+      <head>
+        {/* ซ่อน loader ทันทีถ้าเคยโหลดแล้วใน session นี้ (ก่อน React hydrate) */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{if(sessionStorage.getItem("masakdi_initial_load_done"))document.documentElement.classList.add("loader-done")}catch(e){}`,
+          }}
+        />
+      </head>
       <body className={`${notoThai.variable} h-full min-h-[100dvh] antialiased`} suppressHydrationWarning>
         <LayoutClient>{children}</LayoutClient>
       </body>

@@ -38,8 +38,25 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: ordersError.message }, { status: 500 });
     }
 
+    // ✅ แนบรีวิว (query แยก เพื่อไม่ให้ประวัติพังถ้ายังไม่มีตาราง order_reviews)
+    const ids = (orders || []).map((o) => o.id);
+    const reviewsByOrder: Record<string, unknown> = {};
+    if (ids.length > 0) {
+      const { data: reviews, error: reviewsError } = await supa
+        .from("order_reviews")
+        .select("order_id, rating, comment, created_at")
+        .in("order_id", ids);
+      if (reviewsError) console.error("Reviews fetch failed:", reviewsError);
+      for (const r of reviews || []) {
+        const { order_id, ...rest } = r;
+        reviewsByOrder[order_id] = rest;
+      }
+    }
+
     return NextResponse.json(
-      { orders: orders || [] },
+      {
+        orders: (orders || []).map((o) => ({ ...o, review: reviewsByOrder[o.id] ?? null })),
+      },
       { headers: { "Cache-Control": "no-store" } }
     );
   } catch (error) {

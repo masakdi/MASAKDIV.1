@@ -2,12 +2,13 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { supa } from "@/app/lib/supabaseClient";
+import { beddingSupplies, describeBedding, isBeddingOrder } from "@/app/lib/bedding";
 import {
   Clipboard, Check, X, Phone, MapPin, User, ArrowLeft,
   DollarSign, Package, RefreshCw, ChevronDown, Search,
   Clock, CheckCircle2, XCircle, AlertCircle, Share2, Eye, EyeOff,
   ArrowDownNarrowWide, ArrowUpNarrowWide, BarChart3, TrendingUp,
-  ShoppingBag, Calendar, Ticket, Settings, Edit2, Truck, Bookmark, Trash2,
+  ShoppingBag, Calendar, Ticket, Settings, Edit2, Truck, Bookmark, Trash2, Star,
 } from "lucide-react";
 import Swal from "sweetalert2";
 
@@ -88,6 +89,7 @@ export default function AdminDispatchPage() {
   const [basePrices, setBasePrices] = useState<any[]>([]);
   const [supplies, setSupplies] = useState<any[]>([]);
   const [platformFees, setPlatformFees] = useState<any[]>([]);
+  const [beddingPrices, setBeddingPrices] = useState<any[]>([]);
   const [deliveryFees, setDeliveryFees] = useState<any[]>([]);
 
   // UI states
@@ -180,10 +182,11 @@ export default function AdminDispatchPage() {
         fetch("/api/admin/delivery-fees", { headers: { "x-admin-token": token } })
       ]);
       if (res1.ok) {
-        const { basePrices, supplies, platformFees } = await res1.json();
+        const { basePrices, supplies, platformFees, beddingPrices } = await res1.json();
         setBasePrices(basePrices || []);
         setSupplies(supplies || []);
         setPlatformFees(platformFees || []);
+        setBeddingPrices(beddingPrices || []);
       }
       if (res2.ok) {
         const { data } = await res2.json();
@@ -194,10 +197,10 @@ export default function AdminDispatchPage() {
     }
   };
 
-  const handleUpdatePrice = async (type: "basePrice" | "supply" | "platformFee", item: any) => {
+  const handleUpdatePrice = async (type: "basePrice" | "supply" | "platformFee" | "bedding", item: any) => {
     const { value: price } = await Swal.fire({
       title: 'แก้ไขราคา',
-      text: `ปรับราคาสำหรับ ${item.svc || item.category || item.fee_type || (item.key === 'detergent' ? 'ผงซักฟอก' : 'น้ำยาปรับผ้านุ่ม')} ${item.size ? `(ไซส์ ${item.size})` : ''}`,
+      text: `ปรับราคาสำหรับ ${item.label || item.svc || item.category || item.fee_type || (item.key === 'detergent' ? 'ผงซักฟอก' : 'น้ำยาปรับผ้านุ่ม')} ${item.size ? `(ไซส์ ${item.size})` : ''}`,
       input: 'number',
       inputValue: item.price_ex_delivery || item.price || item.amount,
       showCancelButton: true,
@@ -209,7 +212,7 @@ export default function AdminDispatchPage() {
       const token = sessionStorage.getItem("admin_token") || "";
       let updates: any = {};
       if (type === "basePrice") updates = { price_ex_delivery: Number(price) };
-      else if (type === "supply") updates = { price: Number(price) };
+      else if (type === "supply" || type === "bedding") updates = { price: Number(price) };
       else if (type === "platformFee") updates = { amount: Number(price) };
 
       try {
@@ -587,6 +590,11 @@ const shareOrder = async (order: OrderItem) => {
               if (b.softener) calcSoftener += supplyRate * q;
           });
       }
+      if (isBeddingOrder(order.addons)) {
+          const bs = beddingSupplies(order.addons);
+          calcDetergent += bs.detergent;
+          calcSoftener += bs.softener;
+      }
   } else {
       // Fallback: Calculate from baskets (For old orders)
       if (order.addons?.baskets) {
@@ -623,7 +631,9 @@ const shareOrder = async (order: OrderItem) => {
 
   // Generate Basket Detail Text
   let basketsDetail = "-";
-  if (order.addons?.baskets && order.addons.baskets.length > 0) {
+  if (isBeddingOrder(order.addons)) {
+     basketsDetail = "🛏️ ซักเครื่องนอน\n" + describeBedding((order.addons as any).bedding).map((l) => `• ${l}`).join("\n");
+  } else if (order.addons?.baskets && order.addons.baskets.length > 0) {
      basketsDetail = order.addons.baskets.map((b: any, i: number) => {
         const size = b.size || "-";
         const qty = b.qty || 1;
@@ -803,6 +813,11 @@ ${basketPhotoUrl ? `🖼️ รูปตะกร้าผ้า: ${basketPhotoU
                     if (b.softener) calcSoftener += supplyRate * q;
                 });
             }
+            if (isBeddingOrder(o.addons)) {
+                const bs = beddingSupplies(o.addons);
+                calcDetergent += bs.detergent;
+                calcSoftener += bs.softener;
+            }
         } else {
             // Fallback Calculation (Priority 2)
             if (o.addons?.baskets) {
@@ -831,7 +846,7 @@ ${basketPhotoUrl ? `🖼️ รูปตะกร้าผ้า: ${basketPhotoU
         }
 
         // Service Summary String
-        const services = o.addons?.baskets?.map((b: any) => {
+        const services = isBeddingOrder(o.addons) ? 'ซักเครื่องนอน' : o.addons?.baskets?.map((b: any) => {
             const svc = b.service === 'wash_and_dry' ? 'ซัก+อบ' : b.service === 'wash_only' ? 'ซัก' : 'อบ';
             return `${svc} (${b.size})`;
         }).join(', ') || '-';
@@ -963,7 +978,10 @@ ${basketPhotoUrl ? `🖼️ รูปตะกร้าผ้า: ${basketPhotoU
       let basketWash = 0;
       let basketDry = 0;
       
-      if (o.addons?.baskets && o.addons.baskets.length > 0) {
+      if (isBeddingOrder(o.addons)) {
+        // เครื่องนอนนับเป็นค่าซักทั้งหมด
+        wash += adjustedBase;
+      } else if (o.addons?.baskets && o.addons.baskets.length > 0) {
         o.addons.baskets.forEach((b: any) => {
            if (b.service === "wash_only") basketWash += 1;
            else if (b.service === "dry_only") basketDry += 1;
@@ -1129,6 +1147,12 @@ ${basketPhotoUrl ? `🖼️ รูปตะกร้าผ้า: ${basketPhotoU
               className="p-2 rounded-xl bg-slate-50 text-slate-500 hover:bg-slate-100 transition active:scale-90"
             >
               <Ticket size={18} />
+            </button>
+            <button
+              onClick={() => router.push("/Admins/Reviews")}
+              className="p-2 rounded-xl bg-slate-50 text-slate-500 hover:bg-slate-100 transition active:scale-90"
+            >
+              <Star size={18} />
             </button>
             <button
               onClick={() => router.push("/Admins/BookingConfig")}
@@ -1339,6 +1363,11 @@ ${basketPhotoUrl ? `🖼️ รูปตะกร้าผ้า: ${basketPhotoU
                         if (basket.softener) calcSoftener += supplyRate * qty;
                       });
                     }
+                    if (isBeddingOrder(o.addons)) {
+                      const bs = beddingSupplies(o.addons);
+                      calcDetergent += bs.detergent;
+                      calcSoftener += bs.softener;
+                    }
                 } else if (o.addons?.baskets) {
                   // Fallback: Calculate from baskets (Old Orders)
                   o.addons.baskets.forEach((basket: any) => {
@@ -1425,6 +1454,11 @@ ${basketPhotoUrl ? `🖼️ รูปตะกร้าผ้า: ${basketPhotoU
                                     ⚡ ด่วน
                                 </span>
                             )}
+                            {isBeddingOrder(o.addons) && (
+                                <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-amber-100 text-amber-700 ml-1">
+                                    🛏️ เครื่องนอน
+                                </span>
+                            )}
                           </div>
                           <div className="text-[11px] text-slate-500">{timeAgo}</div>
                           {o.order_type === 'booking' && o.scheduled_date && (
@@ -1491,6 +1525,17 @@ ${basketPhotoUrl ? `🖼️ รูปตะกร้าผ้า: ${basketPhotoU
                                   <div className="text-xs text-slate-800">{o.delivery.address}</div>
                                 </div>
                               </div>
+                            </div>
+                          )}
+
+                          {isBeddingOrder(o.addons) && (
+                            <div className="rounded-2xl p-3 border border-slate-200 bg-white">
+                              <div className="text-[10px] text-slate-500 font-medium mb-1">🛏️ รายการเครื่องนอน</div>
+                              <ul className="text-xs text-slate-800 space-y-0.5">
+                                {describeBedding((o.addons as any).bedding).map((line) => (
+                                  <li key={line}>• {line}</li>
+                                ))}
+                              </ul>
                             </div>
                           )}
 
@@ -1924,6 +1969,42 @@ ${basketPhotoUrl ? `🖼️ รูปตะกร้าผ้า: ${basketPhotoU
                     )
                 })}
              </div>
+          </section>
+
+          {/* Bedding Prices */}
+          <section className="space-y-4">
+             <div className="flex items-center justify-between mb-4 px-1 pb-2 border-b border-slate-100">
+                <div className="flex items-center gap-2">
+                    <div className="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center text-amber-600 shadow-sm border border-amber-50">
+                        <Package size={20} />
+                    </div>
+                    <div>
+                        <h3 className="font-black text-slate-800 text-lg">ราคาซักเครื่องนอน</h3>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Bedding Pricing</p>
+                    </div>
+                </div>
+             </div>
+
+             {beddingPrices.length === 0 ? (
+                <p className="text-sm text-slate-400 px-1">ยังไม่มีข้อมูลราคา (รัน sql/migration_bedding.sql ก่อน)</p>
+             ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                   {beddingPrices.map(bp => (
+                      <div key={bp.id} className="bg-white rounded-[1.8rem] p-4 shadow-sm border border-slate-100 flex items-center justify-between gap-3">
+                         <div className="min-w-0">
+                            <p className="text-[11px] font-bold text-slate-500 mb-1">{bp.label}</p>
+                            <p className="text-xl font-black text-slate-900">{bp.price} <span className="text-sm font-medium opacity-30">฿</span></p>
+                         </div>
+                         <button
+                           onClick={() => handleUpdatePrice("bedding", bp)}
+                           className="w-10 h-10 shrink-0 bg-slate-50 text-slate-400 rounded-xl flex items-center justify-center hover:bg-amber-500 hover:text-white transition-all active:scale-90"
+                         >
+                           <Edit2 size={16} />
+                         </button>
+                      </div>
+                   ))}
+                </div>
+             )}
           </section>
 
           {/* Platform Fees */}

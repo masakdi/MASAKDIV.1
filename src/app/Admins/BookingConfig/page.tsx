@@ -18,6 +18,8 @@ export default function BookingConfigPage() {
   const [password, setPassword] = useState("");
   const [configs, setConfigs] = useState<BookingConfig[]>([]);
   const [loading, setLoading] = useState(true);
+  const [hours, setHours] = useState({ open_time: "09:00", close_time: "18:00", cutoff_minutes: 15 });
+  const [savingHours, setSavingHours] = useState(false);
 
   useEffect(() => {
     const token = sessionStorage.getItem("admin_token");
@@ -33,6 +35,7 @@ export default function BookingConfigPage() {
         sessionStorage.setItem("admin_token", inputPass);
         setAuthOk(true);
         fetchConfigs();
+        fetchHours();
       } else if (inputPass === password) {
         alert("รหัสผ่านไม่ถูกต้อง");
       }
@@ -52,6 +55,50 @@ export default function BookingConfigPage() {
       setLoading(false);
     }
   };
+
+  const fetchHours = async () => {
+    try {
+      const res = await fetch("/api/shop-hours", { cache: "no-store" });
+      const d = await res.json();
+      if (d.hours) {
+        setHours({
+          open_time: String(d.hours.open_time).slice(0, 5),
+          close_time: String(d.hours.close_time).slice(0, 5),
+          cutoff_minutes: Number(d.hours.cutoff_minutes),
+        });
+      }
+    } catch (error) {
+      console.error("Failed to load shop hours", error);
+    }
+  };
+
+  const saveHours = async () => {
+    setSavingHours(true);
+    try {
+      const res = await fetch("/api/admin/shop-hours", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "x-admin-token": sessionStorage.getItem("admin_token") || "",
+        },
+        body: JSON.stringify(hours),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "บันทึกไม่สำเร็จ");
+      Swal.fire({ title: "สำเร็จ", text: "บันทึกเวลาเปิด-ปิดเรียบร้อย", icon: "success", timer: 1500, showConfirmButton: false });
+    } catch (error: any) {
+      Swal.fire("Error", error.message, "error");
+    } finally {
+      setSavingHours(false);
+    }
+  };
+
+  // ตัวอย่างเวลาปิดรับจริง = เวลาปิด - cutoff
+  const lastOrderLabel = (() => {
+    const [h, m] = hours.close_time.split(":").map(Number);
+    const t = (((h * 60 + m - (hours.cutoff_minutes || 0)) % 1440) + 1440) % 1440;
+    return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`;
+  })();
 
   const handleToggle = async (dayOfWeek: number, currentActive: boolean) => {
     try {
@@ -116,6 +163,58 @@ export default function BookingConfigPage() {
       </header>
 
       <main className="p-4 max-w-2xl mx-auto mt-4">
+        <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden mb-6">
+          <div className="p-6 border-b border-slate-100 bg-slate-50/50">
+            <h2 className="text-sm font-semibold flex items-center gap-2 text-slate-700">
+              <Clock className="w-4 h-4" /> เวลาเปิด-ปิดรับออเดอร์
+            </h2>
+            <p className="text-xs text-slate-500 mt-1">นอกเวลานี้ลูกค้าจะสั่งซักไม่ได้ (เวลาไทย)</p>
+          </div>
+          <div className="p-5 space-y-4">
+            <div className="grid grid-cols-3 gap-3">
+              <label className="text-xs text-slate-500 space-y-1">
+                <span>เปิด</span>
+                <input
+                  type="time"
+                  value={hours.open_time}
+                  onChange={(e) => setHours({ ...hours, open_time: e.target.value })}
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-900"
+                />
+              </label>
+              <label className="text-xs text-slate-500 space-y-1">
+                <span>ปิด</span>
+                <input
+                  type="time"
+                  value={hours.close_time}
+                  onChange={(e) => setHours({ ...hours, close_time: e.target.value })}
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-900"
+                />
+              </label>
+              <label className="text-xs text-slate-500 space-y-1">
+                <span>ปิดรับก่อน (นาที)</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={180}
+                  value={hours.cutoff_minutes}
+                  onChange={(e) => setHours({ ...hours, cutoff_minutes: Number(e.target.value) })}
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-900"
+                />
+              </label>
+            </div>
+            <p className="text-xs text-slate-600">
+              ลูกค้าสั่งได้ <b>{hours.open_time} - {lastOrderLabel} น.</b> (ร้านปิด {hours.close_time} น.)
+            </p>
+            <button
+              onClick={saveHours}
+              disabled={savingHours}
+              className={`w-full py-3 text-white rounded-2xl text-sm font-medium bg-gradient-to-r ${BLUE_GRADIENT_FROM} ${BLUE_GRADIENT_TO} disabled:opacity-60`}
+            >
+              {savingHours ? "กำลังบันทึก..." : "บันทึกเวลา"}
+            </button>
+          </div>
+        </div>
+
         <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
           <div className="p-6 border-b border-slate-100 bg-slate-50/50">
             <h2 className="text-sm font-semibold flex items-center gap-2 text-slate-700">

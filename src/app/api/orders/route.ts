@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { sendDiscordNotification } from "@/app/lib/discord";
+import { closedMessage, getShopStatus } from "@/app/lib/shopHours";
+import { loadShopHours } from "@/app/lib/shopHoursServer";
+import { priceOrderOnServer, validateScheduledDate } from "@/app/lib/pricingServer";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -32,6 +35,16 @@ export async function POST(req: Request) {
       );
     }
 
+    // ⏰ ตรวจเวลาเปิด-ปิดรับออเดอร์ (ปิดรับก่อนเวลาปิดจริงตาม cutoff_minutes)
+    // จองล่วงหน้าสั่งได้ตลอด เพราะเป็นการจองวันถัดไป
+    const shopStatus = body.order_type === "booking" ? null : getShopStatus(await loadShopHours());
+    if (shopStatus && !shopStatus.isOpen) {
+      return NextResponse.json(
+        { error: "shop_closed", message: closedMessage(shopStatus) },
+        { status: 403 }
+      );
+    }
+
     // ✅ 0. Silent System Check (Auto-Reset Rank/Points before Order)
     const { checkAndResetMembership } = await import("@/app/lib/membershipManager");
     await checkAndResetMembership(body.customer_id);
@@ -53,27 +66,55 @@ export async function POST(req: Request) {
 
     console.log("✅ ยืนยันผู้ใช้:", body.customer_id);
 
+    // 📅 จองล่วงหน้า: วันต้องเป็นพรุ่งนี้ถึงอีก 14 วัน (กันใช้ "จอง" เลี่ยงเวลาปิดรับ)
+    if (body.order_type === "booking") {
+      const dateError = validateScheduledDate(body.scheduled_date);
+      if (dateError) {
+        return NextResponse.json({ error: "invalid_scheduled_date", message: dateError }, { status: 400 });
+      }
+    }
+
+    // 💰 คำนวณราคาใหม่ฝั่ง server ด้วยสูตรเดียวกับหน้าเว็บ (ไม่เชื่อตัวเลขที่ส่งมา)
+    const priced = await priceOrderOnServer(supa, body.customer_id, body);
+    if (!priced.ok) {
+      return NextResponse.json({ error: priced.error, message: priced.message }, { status: priced.status });
+    }
+    const { pricing } = priced;
+
+    // ยอดที่ลูกค้าเห็น/โอนต้องตรงกับที่ server คำนวณ ไม่งั้นให้รีเฟรชดูยอดใหม่
+    if (Math.abs(Number(body.total_amount) - pricing.grandTotal) > 1) {
+      console.warn("⚠️ price mismatch", { client: body.total_amount, server: pricing.grandTotal });
+      return NextResponse.json(
+        {
+          error: "price_mismatch",
+          message: `ราคามีการเปลี่ยนแปลง (ยอดที่ถูกต้องคือ ${pricing.grandTotal} บาท) กรุณารีเฟรชหน้าแล้วตรวจสอบยอดอีกครั้ง`,
+        },
+        { status: 409 }
+      );
+    }
+
     // ✅ เตรียม payload ให้ตรงกับตาราง orders
     const payload = {
       customer_id: body.customer_id, // บังคับต้องมี
-      status: body.status ?? "accepted", // เปลี่ยนจาก pending เป็น accepted
-      base_price: body.base_price ?? 0,
-      supplies_total: body.supplies_total ?? 0,
-      delivery_fee: body.delivery_fee ?? 0,
-      platform_fee: body.platform_fee ?? 0,
-      discount_amount: body.discount_amount ?? 0,
-      discount_reason: body.discount_reason ?? null,
-      subtotal_before_discount: body.subtotal_before_discount ?? 0,
+      status: "accepted", // ออเดอร์ใหม่เริ่มที่ accepted เสมอ
+      base_price: pricing.basePrice,
+      supplies_total: pricing.suppliesTotal,
+      delivery_fee: pricing.deliveryFee,
+      platform_fee: pricing.totalPlatformFee,
+      discount_amount: pricing.summary.discount,
+      discount_reason: pricing.summary.discountLabel || null,
+      subtotal_before_discount:
+        pricing.basePrice + pricing.suppliesTotal + pricing.deliveryFee + pricing.totalPlatformFee,
       delivery: body.delivery ?? null,       // jsonb
-      addons: body.addons ?? null,           // jsonb
+      addons: priced.addons,                 // jsonb (ตะกร้า/เครื่องนอนที่ตรวจแล้ว)
       note: body.note ?? null,
       slip_url: body.slip_url ?? null,
       contact_name: body.contact_name?.trim(),
       contact_phone: body.contact_phone?.replace(/\D/g, ""),
       order_type: body.order_type || 'normal',
       scheduled_date: body.scheduled_date || null,
-      wash_price: body.wash_price ?? 0,
-      dry_price: body.dry_price ?? 0,
+      wash_price: pricing.summary.wash,
+      dry_price: pricing.summary.dry,
     };
 
     // ✅ insert ลงตาราง orders
@@ -99,7 +140,7 @@ export async function POST(req: Request) {
       google_map_link: body.delivery?.google_map_link || null,
     };
 
-    if (payload.discount_reason?.includes("ฟรีค่าส่ง")) {
+    if (priced.freeDeliveryUsed) {
       const { data: userData } = await supa
         .from("users")
         .select("free_delivery_count")
@@ -145,8 +186,8 @@ export async function POST(req: Request) {
           ...fullOrder, 
           total, 
           membership_tier: membershipTier,
-          wash_price: body.wash_price,
-          dry_price: body.dry_price
+          wash_price: payload.wash_price,
+          dry_price: payload.dry_price
         });
 
         if (result.success) {

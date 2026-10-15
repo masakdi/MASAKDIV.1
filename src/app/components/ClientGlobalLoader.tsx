@@ -5,13 +5,9 @@ const MIN_VISIBLE_MS = 1200; // ลดเวลาให้เหมาะสม
 const LOADER_KEY = "masakdi_initial_load_done";
 
 export default function ClientGlobalLoader() {
-  // ✅ เช็คว่าเคยโหลดไปแล้วหรือยัง
-  const [show, setShow] = useState(() => {
-    if (typeof window !== "undefined") {
-      return !sessionStorage.getItem(LOADER_KEY);
-    }
-    return true;
-  });
+  // ✅ เริ่มเป็น true ทั้ง server และ client (กัน hydration mismatch)
+  // ถ้าเคยโหลดแล้ว script ใน layout จะซ่อนด้วย CSS ก่อนแสดงผล จึงไม่กระพริบ
+  const [show, setShow] = useState(true);
   const [fadeOut, setFadeOut] = useState(false);
   const [fadeIn, setFadeIn] = useState(false);
 
@@ -56,6 +52,7 @@ export default function ClientGlobalLoader() {
 
   return (
     <div
+      data-global-loader
       role="status"
       aria-label="Loading"
       className={`fixed inset-0 z-[9999] flex items-center justify-center transition-opacity duration-500 ${
