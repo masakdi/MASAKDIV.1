@@ -217,6 +217,9 @@ export default function HomePage() {
   );
   // นอกเวลาปิดเฉพาะสั่งด่วน จองล่วงหน้าสั่งได้ตลอด
   const shopOpen = orderType === "booking" || (shopStatus?.isOpen ?? true);
+  // ปิดรับสั่งด่วนอยู่ → ล็อกฟอร์มตั้งแต่ขั้นแรก ไม่ให้ลูกค้ากรอกจนถึงหน้าชำระเงินแล้วเพิ่งรู้
+  const quickClosed = !shopOpen;
+  const lockedCls = quickClosed ? "opacity-40 pointer-events-none select-none" : "";
   const canSubmit = itemCount > 0 && !!slip && !!basketPhoto && shopOpen;
 
   // อัปเดตสถานะเปิด-ปิดทุก 30 วินาที กรณีเปิดหน้าค้างไว้จนเลยเวลา
@@ -769,12 +772,13 @@ export default function HomePage() {
             <form
               onSubmit={(e) => {
                 e.preventDefault();
+                if (quickClosed) return;
                 if (validateStep1()) setCurrentStep(2);
               }}
               noValidate
               className="space-y-6"
             >
-              <div className="space-y-4">
+              <fieldset disabled={quickClosed} className={`space-y-4 ${lockedCls}`}>
                 <input
                   id="nickname"
                   value={nickname}
@@ -835,7 +839,7 @@ export default function HomePage() {
                   />
                   <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                 </div>
-              </div>
+              </fieldset>
 
               {/* Booking System Integration */}
               <div className="pt-2 border-t border-slate-100/60">
@@ -854,7 +858,7 @@ export default function HomePage() {
                           : "bg-slate-50 text-slate-500 border border-slate-100"
                       }`}
                     >
-                      สั่งด่วน
+                      สั่งด่วน{shopStatus && !shopStatus.isOpen && <span className="ml-1 text-[11px] font-medium opacity-80">(ปิดอยู่)</span>}
                     </button>
                     <button
                       type="button"
@@ -909,6 +913,7 @@ export default function HomePage() {
               </div>
 
               {/* Delivery Selection */}
+              <fieldset disabled={quickClosed} className={`space-y-6 ${lockedCls}`}>
               <div className="pt-2 border-t border-slate-100/60">
                 <div className="space-y-3 pt-2">
                   <p className="text-sm font-bold text-slate-700 tracking-tight">เลือกวิธีรับ–ส่งผ้า</p>
@@ -993,6 +998,7 @@ export default function HomePage() {
                   </div>
                 </div>
               </div>
+              </fieldset>
 
               <div
                 className="fixed left-0 right-0 bg-gradient-to-t from-white via-white/90 to-transparent px-4 pt-10 pb-4 z-40"
@@ -1003,14 +1009,14 @@ export default function HomePage() {
                 <div className="max-w-md mx-auto">
                   <button
                     type="submit"
-                    disabled={!canGoToStep2}
+                    disabled={!canGoToStep2 || quickClosed}
                     className={`w-full h-11 rounded-full text-sm font-bold shadow-lg transition-all active:scale-95 ${
-                      canGoToStep2
+                      canGoToStep2 && !quickClosed
                         ? "bg-[color:var(--tint)] text-white shadow-blue-100"
                         : "bg-slate-200 text-slate-400 shadow-none pointer-events-none"
                     }`}
                   >
-                    ถัดไป
+                    {quickClosed ? "ปิดรับสั่งด่วน · เลือกจองล่วงหน้าได้" : "ถัดไป"}
                   </button>
                 </div>
               </div>
@@ -1261,12 +1267,17 @@ export default function HomePage() {
 
                     <button
                       type="button"
+                      disabled={quickClosed}
                       onClick={() => {
                         if (validateStep2()) setCurrentStep(3);
                       }}
-                      className="h-11 rounded-2xl px-6 text-sm font-bold bg-[color:var(--tint)] text-white shadow active:scale-95"
+                      className={`h-11 rounded-2xl px-6 text-sm font-bold shadow active:scale-95 ${
+                        quickClosed
+                          ? "bg-slate-200 text-slate-400 shadow-none pointer-events-none"
+                          : "bg-[color:var(--tint)] text-white"
+                      }`}
                     >
-                      ไปชำระเงิน
+                      {quickClosed ? "ปิดรับสั่งด่วน" : "ไปชำระเงิน"}
                     </button>
                   </div>
                 </div>
